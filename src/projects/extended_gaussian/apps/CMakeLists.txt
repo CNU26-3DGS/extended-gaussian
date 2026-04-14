@@ -1,0 +1,3 @@
+project(extended_gaussian_apps)
+
+add_subdirectory(extended_gaussianViewer/)

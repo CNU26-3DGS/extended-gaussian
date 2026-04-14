@@ -1,0 +1,246 @@
+{
+  "global": {
+    "target_vram_mb": 0,
+    "target_ram_mb": 0,
+    "max_upload_mb_per_frame": 512,
+    "max_gpu_evictions_per_frame": 4,
+    "max_cpu_evictions_per_frame": 4,
+    "max_concurrent_disk_loads": 2,
+    "default_unload_hysteresis_sec": 1.0
+  },
+  "assets": {
+    "cell13": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell13",
+      "tags": [
+        "row_2",
+        "col_1",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -2.166666666666667,
+        -2.0,
+        -10.0
+      ],
+      "bounds_max": [
+        -0.8333333333333337,
+        -1.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell14": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell14",
+      "tags": [
+        "row_2",
+        "col_2",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -0.8333333333333335,
+        -2.0,
+        -10.0
+      ],
+      "bounds_max": [
+        0.4999999999999998,
+        -1.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell15": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell15",
+      "tags": [
+        "row_2",
+        "col_3",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        0.5,
+        -2.0,
+        -10.0
+      ],
+      "bounds_max": [
+        1.8333333333333333,
+        -1.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell19": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell19",
+      "tags": [
+        "row_3",
+        "col_1",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -2.166666666666667,
+        -1.0,
+        -10.0
+      ],
+      "bounds_max": [
+        -0.8333333333333337,
+        0.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell20": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell20",
+      "tags": [
+        "row_3",
+        "col_2",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -0.8333333333333335,
+        -1.0,
+        -10.0
+      ],
+      "bounds_max": [
+        0.4999999999999998,
+        0.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell21": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell21",
+      "tags": [
+        "row_3",
+        "col_3",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        0.5,
+        -1.0,
+        -10.0
+      ],
+      "bounds_max": [
+        1.8333333333333333,
+        0.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell25": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell25",
+      "tags": [
+        "row_4",
+        "col_1",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -2.166666666666667,
+        0.0,
+        -10.0
+      ],
+      "bounds_max": [
+        -0.8333333333333337,
+        1.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell26": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell26",
+      "tags": [
+        "row_4",
+        "col_2",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -0.8333333333333335,
+        0.0,
+        -10.0
+      ],
+      "bounds_max": [
+        0.4999999999999998,
+        1.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell27": {
+      "model_dir": "../swaptest/mc_small_aerial_c36/cells/cell27",
+      "tags": [
+        "row_4",
+        "col_3",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        0.5,
+        0.0,
+        -10.0
+      ],
+      "bounds_max": [
+        1.8333333333333333,
+        1.0,
+        10.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    }
+  },
+  "rules": [
+    {
+      "name": "always_cell20_neighbors",
+      "type": "phase",
+      "required": [
+        "cell13",
+        "cell14",
+        "cell15",
+        "cell19",
+        "cell20",
+        "cell21",
+        "cell25",
+        "cell26",
+        "cell27"
+      ]
+    }
+  ]
+}
