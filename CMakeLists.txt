@@ -207,7 +207,7 @@ set(DOXY_DOC_EXCLUDE_PATTERNS_DIRS "")
 ADD_SUBDIRECTORY(src)
 
 
-## handle documentation
-if (WIN32)
-ADD_SUBDIRECTORY(docs)
-endif()
+# ## handle documentation
+# if (WIN32)
+# ADD_SUBDIRECTORY(docs)
+# endif()

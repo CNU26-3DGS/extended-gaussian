@@ -115,7 +115,6 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
 }
 $OutputRoot = Resolve-FullPath $OutputRoot
 
-$DocPath = Join-Path $ProjectRoot "docs\extended_gaussian_windows_portable_bundle_ko.md"
 $BundleLauncherPath = Join-Path $ProjectRoot "tools\windows\run_portable_bundle.cmd"
 $RuntimeCheckPath = Join-Path $ProjectRoot "tools\windows\check_windows_runtime.ps1"
 if (-not (Test-Path $InstallRoot -PathType Container)) {
@@ -123,9 +122,6 @@ if (-not (Test-Path $InstallRoot -PathType Container)) {
 }
 if (-not (Test-Path $ManifestRoot -PathType Container)) {
     throw "Manifest root not found: $ManifestRoot"
-}
-if (-not (Test-Path $DocPath -PathType Leaf)) {
-    throw "Guide document not found: $DocPath"
 }
 if (-not (Test-Path $BundleLauncherPath -PathType Leaf)) {
     throw "Bundle launcher not found: $BundleLauncherPath"
@@ -165,7 +161,6 @@ New-Item -ItemType Directory -Path $bundleRoot | Out-Null
 
 Copy-Item -LiteralPath $InstallRoot -Destination (Join-Path $bundleRoot "install") -Recurse
 Copy-Item -LiteralPath $ManifestRoot -Destination (Join-Path $bundleRoot "manifests") -Recurse
-Copy-Item -LiteralPath $DocPath -Destination (Join-Path $bundleRoot "README_windows_portable_ko.md")
 Copy-Item -LiteralPath $RuntimeCheckPath -Destination (Join-Path $bundleRoot "check_windows_runtime.ps1")
 
 $swaptestDir = Join-Path $bundleRoot "swaptest"

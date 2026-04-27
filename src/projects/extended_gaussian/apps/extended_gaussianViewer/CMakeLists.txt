@@ -8,7 +8,7 @@ source_group("Resources Files" FILES ${RESOURCES})
 
 set(WINDOWS_PORTABLE_SCRIPT "${CMAKE_SOURCE_DIR}/tools/windows/run_installed_viewer.cmd")
 set(WINDOWS_PORTABLE_CHECK_SCRIPT "${CMAKE_SOURCE_DIR}/tools/windows/check_windows_runtime.ps1")
-set(WINDOWS_PORTABLE_DOC "${CMAKE_SOURCE_DIR}/docs/extended_gaussian_windows_portable_bundle_ko.md")
+# set(WINDOWS_PORTABLE_DOC "${CMAKE_SOURCE_DIR}/docs/extended_gaussian_windows_portable_bundle_ko.md")
 set(WINDOWS_PORTABLE_EXTRA_RUNTIME_FILES "")
 set(WINDOWS_PORTABLE_EXTRA_RUNTIME_IMPORTED_TARGETS "")
 set(WINDOWS_PORTABLE_EXTRA_RUNTIME_TARGETS "")
