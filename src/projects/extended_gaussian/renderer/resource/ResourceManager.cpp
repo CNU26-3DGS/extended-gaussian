@@ -95,6 +95,17 @@ namespace sibr {
 		return records_.find(id) != records_.end();
 	}
 
+	bool ResourceManager::getAssetDescriptor(const AssetId& id, AssetDescriptor& descriptor) const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		const auto itr = records_.find(id);
+		if (itr == records_.end()) {
+			return false;
+		}
+		descriptor = itr->second.desc;
+		return true;
+	}
+
 	GaussianField::Ptr ResourceManager::getCpuFieldShared(const AssetId& id) const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
