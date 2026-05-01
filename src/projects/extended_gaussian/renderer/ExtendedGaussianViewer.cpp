@@ -1,4 +1,4 @@
-
+﻿
 #include "ExtendedGaussianViewer.hpp"
 #include <projects/extended_gaussian/renderer/resource/GaussianLoader.hpp>
 #include <projects/extended_gaussian/renderer/subsystem/rendering_system/RenderingSystem.hpp>
@@ -12,6 +12,84 @@
 #include <sstream>
 
 namespace sibr {
+	// SIBR 핸들러 상속
+	class CustomCameraHandler : public sibr::InteractiveCameraHandler {
+	protected:
+		sibr::InputCamera _myCam;
+		sibr::Vector3f _worldUp;
+
+	public:
+		void fromCamera(const sibr::InputCamera& cam, bool anim = false, bool force = false) {
+			_myCam = cam;
+			_worldUp = cam.up();
+			sibr::InteractiveCameraHandler::fromCamera(cam, anim, force);
+		}
+
+		const sibr::InputCamera& getCamera(void) const override {
+			return _myCam;
+		}
+
+		float customCameraSpeed = 10.0f;
+		float customRotSpeed = 10.0f;
+
+		void update(const sibr::Input& input, const float deltaTime, const sibr::Viewport& viewport) override {
+
+			if (viewport.finalSize().y() > 0.0f) { // 사이즈 조절
+				_myCam.aspect(viewport.finalSize().x() / (float)viewport.finalSize().y());
+			}
+
+			sibr::Vector2f mouseDelta = input.mouseDeltaPosition().cast<float>();
+			sibr::Vector3f pos = _myCam.position();
+
+			// 이동 속도;
+			float currentMoveSpeed = customCameraSpeed * 0.05f * deltaTime; // 필요시 flaot 조절
+
+			// 회전 속도
+			float currentRotSens = customRotSpeed * 0.005f; // 필요시 float 조절
+
+			// 키보드 이동
+			if (input.key().isActivated(sibr::Key::W)) pos += _myCam.dir() * currentMoveSpeed;
+			if (input.key().isActivated(sibr::Key::S)) pos -= _myCam.dir() * currentMoveSpeed;
+			if (input.key().isActivated(sibr::Key::A)) pos -= _myCam.right() * currentMoveSpeed;
+			if (input.key().isActivated(sibr::Key::D)) pos += _myCam.right() * currentMoveSpeed;
+			if (input.key().isActivated(sibr::Key::E)) pos += _worldUp * currentMoveSpeed;
+			if (input.key().isActivated(sibr::Key::Q)) pos -= _worldUp * currentMoveSpeed;
+
+			// 마우스 이동
+			if (input.mouseButton().isActivated(sibr::Mouse::Left)) {
+				float slideSens = (currentMoveSpeed * 0.01f); // 필요시 float 조절
+				sibr::Vector3f right = _myCam.right();
+				sibr::Vector3f up = _myCam.up();
+
+				pos += (-mouseDelta.x() * slideSens * right) + (mouseDelta.y() * slideSens * up);
+				_myCam.setLookAt(pos, pos + _myCam.dir(), _myCam.up());
+			}
+			// 마우스 회전
+			else if (input.mouseButton().isActivated(sibr::Mouse::Right)) {
+				sibr::Vector3f forward = _myCam.dir();
+				sibr::Vector3f right = _myCam.right();
+				sibr::Vector3f up = _myCam.up();
+
+				sibr::Matrix3f yawRot = Eigen::AngleAxisf(mouseDelta.x() * currentRotSens, _worldUp).toRotationMatrix();
+				sibr::Matrix3f pitchRot = Eigen::AngleAxisf(mouseDelta.y() * currentRotSens, right).toRotationMatrix();
+
+				sibr::Vector3f newForward = yawRot * pitchRot * forward;
+				sibr::Vector3f newUp = yawRot * pitchRot * up;
+
+				// 짐벌락 방지
+				if (std::abs(newForward.dot(_worldUp)) > 0.98f) {
+					newForward = yawRot * forward;
+					newUp = yawRot * up;
+				}
+
+				_myCam.setLookAt(pos, pos + newForward, newUp);
+			}
+			else {
+				_myCam.setLookAt(pos, pos + _myCam.dir(), _myCam.up());
+			}
+		}
+	};
+
 	ExtendedGaussianViewer::ExtendedGaussianViewer(Window& window, bool resize)
 		: _window(window), _fpsCounter(false)
 	{
@@ -50,6 +128,19 @@ namespace sibr {
 
 	void ExtendedGaussianViewer::onUpdate(Input& input)
 	{
+		auto viewIt = _ibrSubViews.find("Gaussian View");
+		if (viewIt != _ibrSubViews.end()) {
+			static bool isHandlerSwapped = false;
+
+			if (!isHandlerSwapped) {
+				auto myCustomHandler = std::make_shared<CustomCameraHandler>();
+				myCustomHandler->fromCamera(viewIt->second.cam);
+
+				viewIt->second.handler = myCustomHandler;
+				isHandlerSwapped = true;
+			}
+		}
+
 		MultiViewBase::onUpdate(input);
 		_appTimeSec += deltaTime();
 
@@ -93,6 +184,62 @@ namespace sibr {
 	{
 		MultiViewBase::onGui(win);
 
+		if (_showCameraSpeedPannel) { 
+			ImGui::Begin("Camera Speed", &_showCameraSpeedPannel);
+			ImGui::Text("Movement Speed");
+			ImGui::Separator();
+
+			static float cameraSpeed = 20.0f;
+
+			ImGui::SliderFloat("Movement Slider", &cameraSpeed, 1.0f, 100.0f, "%.1f");
+			ImGui::Spacing();
+
+			if (ImGui::Button("-##Move")) {
+				cameraSpeed -= 0.1f;
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("+##Move")) {
+				cameraSpeed += 0.1f;
+			}
+
+			ImGui::SameLine();
+			ImGui::PushItemWidth(150.0f);
+			ImGui::DragFloat("##MoveDrag", &cameraSpeed, 0.1f, 0.1f, 100.0f, "%.1f");
+			ImGui::PopItemWidth();
+
+			ImGui::Spacing();
+			ImGui::Spacing();
+
+			ImGui::Text("Rotation Speed");
+			ImGui::Separator();
+
+			static float cameraRotSpeed = 20.0f;
+			ImGui::SliderFloat("Rotation (Slider)", &cameraRotSpeed, 1.0f, 100.0f, "%.1f");
+			ImGui::Spacing();
+
+			if (ImGui::Button("-##Rot")) { cameraRotSpeed -= 0.1f; }
+			ImGui::SameLine();
+			if (ImGui::Button("+##Rot")) { cameraRotSpeed += 0.1f; }
+
+			ImGui::SameLine();
+			ImGui::PushItemWidth(150.0f);
+			ImGui::DragFloat("##RotDrag", &cameraRotSpeed, 0.1f, 0.1f, 100.0f, "%.1f");
+			ImGui::PopItemWidth();
+
+			auto viewIt = _ibrSubViews.find("Gaussian View");
+			if (viewIt != _ibrSubViews.end()) {
+				
+				auto handler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler);
+				if (handler) {
+					handler->customCameraSpeed = cameraSpeed;
+				}
+			}
+
+			ImGui::End();
+		}
+		
 		// Menu
 		if (_showGUI && ImGui::BeginMainMenuBar())
 		{
@@ -254,6 +401,7 @@ namespace sibr {
 			{
 				ImGui::MenuItem("Scene Outliner", nullptr, &_showScenePanel);
 				ImGui::MenuItem("Resource Browser", nullptr, &_showResourceBrowser);
+				ImGui::MenuItem("Camera Speed", nullptr, &_showCameraSpeedPannel);
 				ImGui::EndMenu();
 			}
 

@@ -83,9 +83,6 @@ namespace sibr {
 
 		void setGoalAltitude(const float& goalAltitude);
 
-		float getSpeedFpsCam() const { return _speedFpsCam; };
-		float getSpeedRotFpsCam() const { return _speedRotFpsCam; };
-
 	private:
 
 		float _speedFpsCam, _speedRotFpsCam; ///< Camera speeds.
