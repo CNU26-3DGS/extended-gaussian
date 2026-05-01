@@ -2,10 +2,10 @@ set(CNU_PROJECT "extended_gaussian")
 set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "12.0")
     set(DEFAULT_ARCHS "75-real;86-real;89-real")
-    message(STATUS "[CNU] CUDA 11.x detected: Removing SM 120 to prevent build error.")
+    message(STATUS "CUDA 11.x detected: Removing SM 120 to prevent build error.")
 else()
     set(DEFAULT_ARCHS "75-real;86-real;89-real;120")
-    message(STATUS "[CNU] CUDA 12.0+ detected: Including SM 120 for Blackwell support.")
+    message(STATUS "CUDA 12.0+ detected: Including SM 120 for Blackwell support.")
 endif()
 
 set(EXTENDED_GAUSSIAN_CUDA_ARCHITECTURES
