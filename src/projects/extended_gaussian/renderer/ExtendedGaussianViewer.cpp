@@ -2,6 +2,7 @@
 #include "ExtendedGaussianViewer.hpp"
 #include <projects/extended_gaussian/renderer/resource/GaussianLoader.hpp>
 #include <projects/extended_gaussian/renderer/subsystem/rendering_system/RenderingSystem.hpp>
+#include <projects/extended_gaussian/renderer/subsystem/capture_system/CaptureSystem.hpp>
 
 #include <core/system/CommandLineArgs.hpp>
 
@@ -124,6 +125,9 @@ namespace sibr {
 		if (!manifestPath.empty()) {
 			loadManifestFile(manifestPath);
 		}
+
+		_subsystem[CAPTURE_SYSTEM] = std::make_unique<CaptureSystem>();
+		_subsystem[CAPTURE_SYSTEM]->onSystemAdded(*this);
 	}
 
 	void ExtendedGaussianViewer::onUpdate(Input& input)
@@ -184,7 +188,7 @@ namespace sibr {
 	{
 		MultiViewBase::onGui(win);
 
-		if (_showCameraSpeedPannel) { 
+		if (_showCameraSpeedPannel) {
 			ImGui::Begin("Camera Speed", &_showCameraSpeedPannel);
 			ImGui::Text("Movement Speed");
 			ImGui::Separator();
@@ -230,7 +234,7 @@ namespace sibr {
 
 			auto viewIt = _ibrSubViews.find("Gaussian View");
 			if (viewIt != _ibrSubViews.end()) {
-				
+
 				auto handler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler);
 				if (handler) {
 					handler->customCameraSpeed = cameraSpeed;
@@ -239,7 +243,7 @@ namespace sibr {
 
 			ImGui::End();
 		}
-		
+
 		// Menu
 		if (_showGUI && ImGui::BeginMainMenuBar())
 		{
@@ -401,6 +405,7 @@ namespace sibr {
 			{
 				ImGui::MenuItem("Scene Outliner", nullptr, &_showScenePanel);
 				ImGui::MenuItem("Resource Browser", nullptr, &_showResourceBrowser);
+				ImGui::MenuItem("Classroom", nullptr, &_showCapturePanel);
 				ImGui::MenuItem("Camera Speed", nullptr, &_showCameraSpeedPannel);
 				ImGui::EndMenu();
 			}
@@ -414,6 +419,9 @@ namespace sibr {
 		if (_showResourceBrowser)
 		{
 			onShowResourceBrowser(win);
+		}
+		if (_showCapturePanel) {
+			onShowCapturePanel(win);
 		}
 	}
 
@@ -697,7 +705,7 @@ namespace sibr {
 
 						SIBR_LOG << "Instance created: " << nameBuf << (previewAssetId.empty() ? " (No Asset)" : "") << std::endl;
 						ImGui::CloseCurrentPopup();
-						
+
 						// Reset buffers
 						strcpy(nameBuf, "NewInstance");
 						previewAssetId.clear();
@@ -933,6 +941,199 @@ namespace sibr {
 				}
 			}
 			ImGui::EndChild();
+		}
+		ImGui::End();
+	}
+
+	void ExtendedGaussianViewer::onShowCapturePanel(Window& win) {
+
+		float sideWidth = 350.0f;
+		ImGui::SetNextWindowPos(ImVec2(10.0f, 20.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(sideWidth, 400.0f), ImGuiCond_FirstUseEver);
+
+		if (ImGui::Begin("ClassRoom", &_showCapturePanel)) {
+			CaptureSystem* captureSys = static_cast<CaptureSystem*>(_subsystem[CAPTURE_SYSTEM].get());
+
+			bool openCreateModal = false;
+
+			// 1. 캡처 리스트 (Child Window)
+			const bool listOpen = ImGui::BeginChild("CaptureList", ImVec2(0, 0), true);
+			if (listOpen) {
+				// 빈 공간 우클릭 시 생성 메뉴
+				if (ImGui::BeginPopupContextWindow("CaptureListContext", 1)) {
+					if (ImGui::MenuItem("Create Capture")) {
+						openCreateModal = true;
+					}
+					ImGui::EndPopup();
+				}
+
+				if (captureSys) {
+					const auto& allCaptures = captureSys->getCaptures();
+					std::string captureToDelete = ""; 
+
+					for (const auto& pair : allCaptures) {
+						sibr::Capture* cap = pair.second.get();
+
+						// 고유 ID 푸시 (아이템별 독립적인 우클릭 메뉴를 위해 필요)
+						ImGui::PushID(cap->name.c_str());
+
+						bool clicked = ImGui::Selectable(cap->name.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick);
+
+						// 아이템 위에서 우클릭 시 삭제 메뉴 팝업
+						if (ImGui::BeginPopupContextItem("CaptureItemMenu", 1)) {
+							if (ImGui::MenuItem("Delete Capture")) {
+								captureToDelete = cap->name;
+							}
+							ImGui::EndPopup();
+						}
+
+						if (clicked) {
+							if (ImGui::IsMouseDoubleClicked(0)) {
+								if (_selectedInstance) {
+									// 1. Transform 업데이트
+									_selectedInstance->getPositionRef() = cap->capture_position;
+									_selectedInstance->getEulerRef() = cap->captured_euler_angle;
+									_selectedInstance->getScaleRef() = cap->captured_scale;
+
+									// 2. Field 업데이트
+									if (cap->captured_field) {
+										_selectedInstance->setAssetId(cap->captured_field->name);
+									}
+
+									_subsystem[RENDERING_SYSTEM]->onInstanceUpdated(*_selectedInstance);
+
+									RenderingSystem* renderingSystem = getRenderingSystem();
+									if (renderingSystem) {
+										const auto viewIt = _ibrSubViews.find("Gaussian View");
+										if (viewIt != _ibrSubViews.end()) {
+											sibr::Matrix3f Rv = cap->captured_view.block<3, 3>(0, 0);
+											sibr::Vector3f tv = cap->captured_view.block<3, 1>(0, 3);
+
+											sibr::Vector3f cameraTranslation = -Rv.transpose() * tv;
+											sibr::Quaternionf cameraRotation(Rv.transpose());
+											cameraRotation.normalize();
+
+											// 1. 카메라 데이터 구조체 업데이트
+											viewIt->second.cam.set(cameraTranslation, cameraRotation);
+
+											// 2. CustomCameraHandler로 동기화
+											auto customHandler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler);
+
+											if (customHandler) {
+												customHandler->fromCamera(static_cast<sibr::InputCamera&>(viewIt->second.cam));
+											}
+											else {
+												SIBR_WRG << "Handler is not a CustomCameraHandler! Cannot sync." << std::endl;
+											}
+										}
+									}
+
+									SIBR_LOG << "Capture [" << cap->name << "] applied to Instance [" << _selectedInstance->getNameRef() << "]" << std::endl;
+								}
+								else {
+									SIBR_WRG << "No instance selected in Scene Outliner to apply capture!" << std::endl;
+								}
+							}
+						}
+						ImGui::PopID(); 
+					}
+
+					if (!captureToDelete.empty()) {
+						captureSys->removeCapture(captureToDelete);
+						SIBR_LOG << "Capture Deleted: " << captureToDelete << std::endl;
+					}
+				}
+			}
+			ImGui::EndChild();
+
+			// 2. 캡처 생성 모달 트리거 및 렌더링
+
+			if (openCreateModal) {
+				ImGui::OpenPopup("Create New Capture");
+			}
+
+			if (ImGui::BeginPopupModal("Create New Capture", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+				static char capNameBuf[128] = "NewCapture";
+				static std::string targetInstanceName = "";
+				static std::string targetAssetId = "";
+
+				ImGui::InputText("Name", capNameBuf, IM_ARRAYSIZE(capNameBuf));
+				ImGui::Spacing();
+
+				if (ImGui::BeginCombo("Instance", targetInstanceName.empty() ? "Select..." : targetInstanceName.c_str())) {
+					for (const auto& pair : _scene->getInstances()) {
+						if (ImGui::Selectable(pair.first.c_str(), targetInstanceName == pair.first)) {
+							targetInstanceName = pair.first;
+						}
+					}
+					ImGui::EndCombo();
+				}
+
+				if (ImGui::BeginCombo("Field", targetAssetId.empty() ? "Select..." : targetAssetId.c_str())) {
+					for (const auto& assetId : _resourceManager->listAssetIds()) {
+						if (ImGui::Selectable(assetId.c_str(), targetAssetId == assetId)) {
+							targetAssetId = assetId;
+						}
+					}
+					ImGui::EndCombo();
+				}
+
+				ImGui::Spacing();
+				ImGui::Separator();
+				ImGui::Spacing();
+
+				if (ImGui::Button("Save", ImVec2(120, 0))) {
+					GaussianInstance* instToCapture = nullptr;
+					auto it = _scene->getInstances().find(targetInstanceName);
+					if (it != _scene->getInstances().end()) {
+						instToCapture = it->second.get();
+					}
+
+					const GaussianField* fieldToCapture = _resourceManager->getCpuFieldShared(targetAssetId).get();
+
+					if (instToCapture && fieldToCapture) {
+						RenderingSystem* renderingSystem = getRenderingSystem();
+						if (renderingSystem) {
+							const auto viewIt = _ibrSubViews.find("Gaussian View");
+							if (viewIt != _ibrSubViews.end()) {
+								Matrix4f currentViewMatrix = viewIt->second.cam.view();
+
+								captureSys->addCapture(
+									capNameBuf,
+									instToCapture,
+									fieldToCapture,
+									instToCapture->getPositionRef(),
+									instToCapture->getEulerRef(),
+									instToCapture->getScaleRef(),
+									currentViewMatrix
+								);
+
+								SIBR_LOG << "Capture Created: " << capNameBuf << std::endl;
+							}
+							else {
+								SIBR_WRG << "Failed to find 'Gaussian View'. Capture not created." << std::endl;
+							}
+						}
+
+						ImGui::CloseCurrentPopup();
+						strcpy(capNameBuf, "NewCapture");
+						targetInstanceName.clear();
+						targetAssetId.clear();
+					}
+					else {
+						SIBR_WRG << "Please select both a valid instance and field." << std::endl;
+					}
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+					strcpy(capNameBuf, "NewCapture");
+					targetInstanceName.clear();
+					targetAssetId.clear();
+					ImGui::CloseCurrentPopup();
+				}
+				ImGui::EndPopup();
+			}
 		}
 		ImGui::End();
 	}
