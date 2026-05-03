@@ -60,8 +60,13 @@ namespace sibr {
 		bool focusCameraOnBlockCenter();
 		bool focusCameraOnManifestBounds();
 		bool focusCameraOnBounds(const Vector3f& minBounds, const Vector3f& maxBounds);
+		bool focusCameraOnTarget(const Vector3f& target, const Vector3f& minBounds, const Vector3f& maxBounds);
+		bool focusCameraOnAssetCenter(const AssetId& assetId);
+		bool focusCameraOnInstanceCenter(const GaussianInstance& instance);
 		bool getManifestBounds(Vector3f& minBounds, Vector3f& maxBounds) const;
 		bool getInstanceWorldBounds(const GaussianInstance& instance, Vector3f& minBounds, Vector3f& maxBounds) const;
+		bool transformInstanceBounds(const GaussianInstance& instance, const Vector3f& localMin, const Vector3f& localMax, Vector3f& minBounds, Vector3f& maxBounds) const;
+		bool resolveAssetFocusDescriptor(const AssetId& assetId, AssetDescriptor& descriptor);
 		static const char* cpuStateLabel(CpuState state);
 		static const char* gpuStateLabel(GpuState state);
 		static std::string formatMegabytes(size_t bytes);

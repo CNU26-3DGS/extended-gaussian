@@ -560,19 +560,14 @@ namespace sibr {
 
 	bool ExtendedGaussianViewer::focusCameraOnBlockCenter()
 	{
-		Vector3f minBounds = Vector3f::Zero();
-		Vector3f maxBounds = Vector3f::Zero();
-		if (_selectedInstance && getInstanceWorldBounds(*_selectedInstance, minBounds, maxBounds)) {
-			return focusCameraOnBounds(minBounds, maxBounds);
+		if (_selectedInstance && focusCameraOnInstanceCenter(*_selectedInstance)) {
+			return true;
 		}
 
 		if (_resourceManager) {
 			const auto assetIds = _resourceManager->listAssetIds();
 			if (assetIds.size() == 1) {
-				AssetDescriptor descriptor;
-				if (_resourceManager->getAssetDescriptor(assetIds.front(), descriptor)) {
-					return focusCameraOnBounds(descriptor.bounds_min, descriptor.bounds_max);
-				}
+				return focusCameraOnAssetCenter(assetIds.front());
 			}
 		}
 
@@ -596,23 +591,29 @@ namespace sibr {
 
 	bool ExtendedGaussianViewer::focusCameraOnBounds(const Vector3f& minBounds, const Vector3f& maxBounds)
 	{
+		const Vector3f center = 0.5f * (minBounds + maxBounds);
+		return focusCameraOnTarget(center, minBounds, maxBounds);
+	}
+
+	bool ExtendedGaussianViewer::focusCameraOnTarget(const Vector3f& target, const Vector3f& minBounds, const Vector3f& maxBounds)
+	{
 		const auto viewIt = _ibrSubViews.find("Gaussian View");
 		if (viewIt == _ibrSubViews.end()) {
 			return false;
 		}
 
-		auto handler = std::dynamic_pointer_cast<InteractiveCameraHandler>(viewIt->second.handler);
-		if (!handler) {
+		auto customHandler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler);
+		auto interactiveHandler = std::dynamic_pointer_cast<InteractiveCameraHandler>(viewIt->second.handler);
+		if (!customHandler && !interactiveHandler) {
 			return false;
 		}
 
-		const Vector3f center = 0.5f * (minBounds + maxBounds);
 		const Vector3f diagonal = maxBounds - minBounds;
 		const float maxExtent = std::max(1.0f, std::max(diagonal.x(), std::max(diagonal.y(), diagonal.z())));
 		const float zMargin = std::max(0.1f, 0.05f * diagonal.z());
 		const float preferredZOffset = std::max(1.0f, 0.25f * diagonal.z());
-		const float clampedZ = std::min(maxBounds.z() - zMargin, center.z() + preferredZOffset);
-		Vector3f eye = center;
+		const float clampedZ = std::min(maxBounds.z() - zMargin, target.z() + preferredZOffset);
+		Vector3f eye = target;
 		eye.z() = std::max(minBounds.z() + zMargin, clampedZ);
 
 		// Keep the camera inside the focused AABB so camera_bounds rules immediately activate.
@@ -621,12 +622,104 @@ namespace sibr {
 		eye.y() = std::min(maxBounds.y() - xyInset, std::max(minBounds.y() + xyInset, eye.y()));
 
 		InputCamera focusCamera = viewIt->second.cam;
-		focusCamera.setLookAt(eye, center, Vector3f(0.0f, 1.0f, 0.0f));
+		focusCamera.setLookAt(eye, target, Vector3f(0.0f, 1.0f, 0.0f));
 		focusCamera.znear(0.01f);
 		focusCamera.zfar(std::max(1000.0f, maxExtent * 20.0f));
-		handler->fromCamera(focusCamera, false, true);
+		if (customHandler) {
+			customHandler->fromCamera(focusCamera, false, true);
+		}
+		else {
+			interactiveHandler->fromCamera(focusCamera, false, true);
+		}
 		viewIt->second.cam = focusCamera;
 		return true;
+	}
+
+	bool ExtendedGaussianViewer::focusCameraOnAssetCenter(const AssetId& assetId)
+	{
+		AssetDescriptor descriptor;
+		if (!resolveAssetFocusDescriptor(assetId, descriptor)) {
+			return false;
+		}
+
+		const Vector3f minBounds = descriptor.has_focus_bounds ? descriptor.focus_bounds_min : descriptor.bounds_min;
+		const Vector3f maxBounds = descriptor.has_focus_bounds ? descriptor.focus_bounds_max : descriptor.bounds_max;
+		const Vector3f target = descriptor.has_focus_bounds
+			? descriptor.focus_center
+			: (descriptor.has_gaussian_centroid
+				? descriptor.gaussian_centroid
+				: 0.5f * (minBounds + maxBounds));
+		return focusCameraOnTarget(target, minBounds, maxBounds);
+	}
+
+	bool ExtendedGaussianViewer::focusCameraOnInstanceCenter(const GaussianInstance& instance)
+	{
+		if (!instance.hasAsset()) {
+			return false;
+		}
+
+		AssetDescriptor descriptor;
+		if (!resolveAssetFocusDescriptor(instance.getAssetId(), descriptor)) {
+			return false;
+		}
+
+		const Vector3f localMin = descriptor.has_focus_bounds ? descriptor.focus_bounds_min : descriptor.bounds_min;
+		const Vector3f localMax = descriptor.has_focus_bounds ? descriptor.focus_bounds_max : descriptor.bounds_max;
+		Vector3f minBounds = Vector3f::Zero();
+		Vector3f maxBounds = Vector3f::Zero();
+		if (!transformInstanceBounds(instance, localMin, localMax, minBounds, maxBounds)) {
+			return false;
+		}
+
+		const Vector3f localTarget = descriptor.has_focus_bounds
+			? descriptor.focus_center
+			: (descriptor.has_gaussian_centroid
+				? descriptor.gaussian_centroid
+				: 0.5f * (localMin + localMax));
+		const Matrix3f transform = instance.getRotationQuaternion().toRotationMatrix() * instance.getScale();
+		const Vector3f worldTarget = transform * localTarget + instance.getPosition();
+		return focusCameraOnTarget(worldTarget, minBounds, maxBounds);
+	}
+
+	bool ExtendedGaussianViewer::resolveAssetFocusDescriptor(const AssetId& assetId, AssetDescriptor& descriptor)
+	{
+		if (!_resourceManager || !_resourceManager->getAssetDescriptor(assetId, descriptor)) {
+			return false;
+		}
+
+		if (descriptor.has_focus_bounds) {
+			return true;
+		}
+
+		const auto residentField = _resourceManager->getCpuFieldShared(assetId);
+		if (residentField) {
+			if (residentField->has_centroid) {
+				descriptor.has_gaussian_centroid = true;
+				descriptor.gaussian_centroid = residentField->centroid;
+			}
+			if (residentField->has_focus_bounds) {
+				descriptor.has_focus_bounds = true;
+				descriptor.focus_center = residentField->focus_center;
+				descriptor.focus_bounds_min = residentField->focus_bounds_min;
+				descriptor.focus_bounds_max = residentField->focus_bounds_max;
+				return true;
+			}
+		}
+
+		if (descriptor.model_dir.empty()) {
+			return true;
+		}
+
+		SIBR_LOG << "Loading asset '" << assetId << "' to compute Gaussian focus bounds." << std::endl;
+		auto field = GaussianLoader::load(descriptor.model_dir.string());
+		if (!field) {
+			return true;
+		}
+
+		field->name = assetId;
+		field->path = descriptor.model_dir.string();
+		_resourceManager->addField(std::move(field));
+		return _resourceManager->getAssetDescriptor(assetId, descriptor);
 	}
 
 	bool ExtendedGaussianViewer::getManifestBounds(Vector3f& minBounds, Vector3f& maxBounds) const
@@ -666,8 +759,11 @@ namespace sibr {
 			return false;
 		}
 
-		const Vector3f localMin = descriptor.bounds_min;
-		const Vector3f localMax = descriptor.bounds_max;
+		return transformInstanceBounds(instance, descriptor.bounds_min, descriptor.bounds_max, minBounds, maxBounds);
+	}
+
+	bool ExtendedGaussianViewer::transformInstanceBounds(const GaussianInstance& instance, const Vector3f& localMin, const Vector3f& localMax, Vector3f& minBounds, Vector3f& maxBounds) const
+	{
 		const std::array<Vector3f, 8> corners = {
 			Vector3f(localMin.x(), localMin.y(), localMin.z()),
 			Vector3f(localMin.x(), localMin.y(), localMax.z()),
@@ -945,10 +1041,7 @@ namespace sibr {
 						if (_resourceManager->addField(std::move(field))) {
 							const auto assetIds = _resourceManager->listAssetIds();
 							if (assetIds.size() == 1 && assetIds.front() == importedAssetId) {
-								AssetDescriptor descriptor;
-								if (_resourceManager->getAssetDescriptor(importedAssetId, descriptor)) {
-									focusCameraOnBounds(descriptor.bounds_min, descriptor.bounds_max);
-								}
+								focusCameraOnAssetCenter(importedAssetId);
 							}
 						}
 					}
