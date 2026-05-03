@@ -6,8 +6,9 @@
 namespace sibr {
 	enum SubsystemType {
 		RENDERING_SYSTEM = 0,
-		ARCHIVE_SYSTEM = 1,
-		UI_SYSTEM = 2,
+		CAPTURE_SYSTEM = 1,
+		ARCHIVE_SYSTEM = 2,
+		UI_SYSTEM = 3,
 		SUBSYSTEM_LAST
 	};
 

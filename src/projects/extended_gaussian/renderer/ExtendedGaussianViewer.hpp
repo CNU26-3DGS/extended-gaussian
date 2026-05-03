@@ -68,6 +68,7 @@ namespace sibr {
 
 		void onShowScenePanel(sibr::Window& win);
 		void onShowResourceBrowser(sibr::Window& win);
+		void onShowCapturePanel(Window& win);
 
 		/** Show/hide the GUI. */
 		void toggleGUI();
@@ -77,6 +78,8 @@ namespace sibr {
 		bool _showGUI = true; ///< Should the GUI be displayed.
 		bool _showScenePanel = false;
 		bool _showResourceBrowser = false;
+		bool _showCapturePanel = false;
+		bool _showCameraSpeedPannel = true;
 
 		GaussianInstance* _selectedInstance = nullptr;
 		std::string _selectedField;

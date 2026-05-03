@@ -216,10 +216,9 @@ namespace sibr {
 
 		float _bottom_vp = 1.f;
 
-		sibr::FPSCamera _fpsCamera; ///< FPS handler.
 		sibr::Orbit _orbit; ///< Orbit handler.
 		sibr::TrackBall _trackball; ///< Trackball handler.
-
+		sibr::FPSCamera _fpsCamera;///< FPS handler.
 		InteractionMode _currentMode; ///< Current handler mode.
 
 		float _radius; ///< Trackball radius property (for GUI).
