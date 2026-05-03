@@ -6,7 +6,9 @@
 
 #include <boost/filesystem.hpp>
 
+#include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <fstream>
 
 namespace sibr {
@@ -81,17 +83,92 @@ namespace sibr {
 
         Vector3f minn(FLT_MAX, FLT_MAX, FLT_MAX);
         Vector3f maxx(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+        Vector3d positionSum = Vector3d::Zero();
         for (uint32_t i = 0; i < count; i++) {
             maxx = maxx.cwiseMax(points[i].pos);
             minn = minn.cwiseMin(points[i].pos);
+            positionSum += points[i].pos.cast<double>();
         }
-        out_field.min_edges = minn;
-        out_field.max_edges = maxx;
+        if (count > 0) {
+            out_field.min_edges = minn;
+            out_field.max_edges = maxx;
+            out_field.has_centroid = true;
+            out_field.centroid = (positionSum / static_cast<double>(count)).cast<float>();
+
+            constexpr double kFocusKeepRatio = 0.90;
+            auto selectMedian = [](std::vector<float>& values) {
+                const size_t middle = values.size() / 2;
+                std::nth_element(values.begin(), values.begin() + middle, values.end());
+                return values[middle];
+            };
+
+            std::vector<float> axisValues(count);
+            for (uint32_t i = 0; i < count; ++i) {
+                axisValues[i] = points[i].pos.x();
+            }
+            const float medianX = selectMedian(axisValues);
+            for (uint32_t i = 0; i < count; ++i) {
+                axisValues[i] = points[i].pos.y();
+            }
+            const float medianY = selectMedian(axisValues);
+            for (uint32_t i = 0; i < count; ++i) {
+                axisValues[i] = points[i].pos.z();
+            }
+            const float medianZ = selectMedian(axisValues);
+
+            const Vector3f medianCenter(medianX, medianY, medianZ);
+            const size_t focusCount = std::min<size_t>(
+                count,
+                std::max<size_t>(
+                    1,
+                    static_cast<size_t>(std::ceil(static_cast<double>(count) * kFocusKeepRatio))));
+            std::vector<float> distances(count);
+            for (uint32_t i = 0; i < count; ++i) {
+                distances[i] = (points[i].pos - medianCenter).squaredNorm();
+            }
+            std::nth_element(distances.begin(), distances.begin() + focusCount - 1, distances.end());
+            const float distanceThreshold = distances[focusCount - 1];
+
+            Vector3f focusMin(FLT_MAX, FLT_MAX, FLT_MAX);
+            Vector3f focusMax(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+            Vector3d focusSum = Vector3d::Zero();
+            size_t keptCount = 0;
+            for (uint32_t i = 0; i < count; ++i) {
+                if ((points[i].pos - medianCenter).squaredNorm() > distanceThreshold) {
+                    continue;
+                }
+                focusMin = focusMin.cwiseMin(points[i].pos);
+                focusMax = focusMax.cwiseMax(points[i].pos);
+                focusSum += points[i].pos.cast<double>();
+                ++keptCount;
+            }
+
+            if (keptCount > 0) {
+                out_field.has_focus_bounds = true;
+                out_field.focus_center = (focusSum / static_cast<double>(keptCount)).cast<float>();
+                out_field.focus_bounds_min = focusMin;
+                out_field.focus_bounds_max = focusMax;
+            }
+        }
+        else {
+            out_field.min_edges = Vector3f::Zero();
+            out_field.max_edges = Vector3f::Zero();
+            out_field.has_centroid = false;
+            out_field.centroid = Vector3f::Zero();
+            out_field.has_focus_bounds = false;
+            out_field.focus_center = Vector3f::Zero();
+            out_field.focus_bounds_min = Vector3f::Zero();
+            out_field.focus_bounds_max = Vector3f::Zero();
+        }
 
         std::vector<std::pair<uint64_t, int>> mapp(count);
         const Vector3f size = maxx - minn;
+        const Vector3f safeSize(
+            std::abs(size.x()) > FLT_EPSILON ? size.x() : 1.0f,
+            std::abs(size.y()) > FLT_EPSILON ? size.y() : 1.0f,
+            std::abs(size.z()) > FLT_EPSILON ? size.z() : 1.0f);
         for (uint32_t i = 0; i < count; i++) {
-            Vector3f rel = (points[i].pos - minn).array() / size.array();
+            Vector3f rel = (points[i].pos - minn).array() / safeSize.array();
             Vector3f scaled = ((float((1 << 21) - 1)) * rel);
             Vector3i xyz = scaled.cast<int>();
 
