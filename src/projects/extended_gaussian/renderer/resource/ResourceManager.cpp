@@ -40,6 +40,12 @@ namespace sibr {
 		record.desc.model_dir = sharedField->path;
 		record.desc.bounds_min = sharedField->min_edges;
 		record.desc.bounds_max = sharedField->max_edges;
+		record.desc.has_gaussian_centroid = sharedField->has_centroid;
+		record.desc.gaussian_centroid = sharedField->centroid;
+		record.desc.has_focus_bounds = sharedField->has_focus_bounds;
+		record.desc.focus_center = sharedField->focus_center;
+		record.desc.focus_bounds_min = sharedField->focus_bounds_min;
+		record.desc.focus_bounds_max = sharedField->focus_bounds_max;
 
 		const size_t estimatedBytes = estimateCpuBytes(*sharedField);
 		record.desc.estimated_cpu_bytes = estimatedBytes;
@@ -93,6 +99,17 @@ namespace sibr {
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
 		return records_.find(id) != records_.end();
+	}
+
+	bool ResourceManager::getAssetDescriptor(const AssetId& id, AssetDescriptor& descriptor) const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		const auto itr = records_.find(id);
+		if (itr == records_.end()) {
+			return false;
+		}
+		descriptor = itr->second.desc;
+		return true;
 	}
 
 	GaussianField::Ptr ResourceManager::getCpuFieldShared(const AssetId& id) const
@@ -152,6 +169,12 @@ namespace sibr {
 		record.desc.model_dir = field->path;
 		record.desc.bounds_min = field->min_edges;
 		record.desc.bounds_max = field->max_edges;
+		record.desc.has_gaussian_centroid = field->has_centroid;
+		record.desc.gaussian_centroid = field->centroid;
+		record.desc.has_focus_bounds = field->has_focus_bounds;
+		record.desc.focus_center = field->focus_center;
+		record.desc.focus_bounds_min = field->focus_bounds_min;
+		record.desc.focus_bounds_max = field->focus_bounds_max;
 		record.desc.estimated_cpu_bytes = estimateCpuBytes(*field);
 		totalCpuBytes_ -= record.actual_cpu_bytes;
 		record.actual_cpu_bytes = estimateCpuBytes(*field);

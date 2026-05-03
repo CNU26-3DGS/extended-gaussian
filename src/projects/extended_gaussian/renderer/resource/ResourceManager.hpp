@@ -68,6 +68,7 @@ namespace sibr {
 		bool registerAsset(const AssetDescriptor& descriptor);
 		bool unregisterAsset(const AssetId& id);
 		bool hasAsset(const AssetId& id) const;
+		bool getAssetDescriptor(const AssetId& id, AssetDescriptor& descriptor) const;
 		GaussianField::Ptr getCpuFieldShared(const AssetId& id) const;
 
 		bool removeField(const std::string& name);
