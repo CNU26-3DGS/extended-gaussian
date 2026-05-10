@@ -46,6 +46,8 @@ namespace sibr {
 		record.desc.focus_center = sharedField->focus_center;
 		record.desc.focus_bounds_min = sharedField->focus_bounds_min;
 		record.desc.focus_bounds_max = sharedField->focus_bounds_max;
+		record.desc.has_camera_focus_center = sharedField->has_camera_focus_center;
+		record.desc.camera_focus_center = sharedField->camera_focus_center;
 
 		const size_t estimatedBytes = estimateCpuBytes(*sharedField);
 		record.desc.estimated_cpu_bytes = estimatedBytes;
@@ -175,6 +177,8 @@ namespace sibr {
 		record.desc.focus_center = field->focus_center;
 		record.desc.focus_bounds_min = field->focus_bounds_min;
 		record.desc.focus_bounds_max = field->focus_bounds_max;
+		record.desc.has_camera_focus_center = field->has_camera_focus_center;
+		record.desc.camera_focus_center = field->camera_focus_center;
 		record.desc.estimated_cpu_bytes = estimateCpuBytes(*field);
 		totalCpuBytes_ -= record.actual_cpu_bytes;
 		record.actual_cpu_bytes = estimateCpuBytes(*field);

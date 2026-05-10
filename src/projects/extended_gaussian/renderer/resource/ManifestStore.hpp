@@ -44,6 +44,8 @@ namespace sibr {
 		Vector3f focus_center = Vector3f::Zero();
 		Vector3f focus_bounds_min = Vector3f::Zero();
 		Vector3f focus_bounds_max = Vector3f::Zero();
+		bool has_camera_focus_center = false;
+		Vector3f camera_focus_center = Vector3f::Zero();
 		size_t estimated_cpu_bytes = 0;
 		size_t estimated_gpu_bytes = 0;
 		int priority = 0;

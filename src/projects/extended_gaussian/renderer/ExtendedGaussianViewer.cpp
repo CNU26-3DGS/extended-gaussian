@@ -644,11 +644,13 @@ namespace sibr {
 
 		const Vector3f minBounds = descriptor.has_focus_bounds ? descriptor.focus_bounds_min : descriptor.bounds_min;
 		const Vector3f maxBounds = descriptor.has_focus_bounds ? descriptor.focus_bounds_max : descriptor.bounds_max;
-		const Vector3f target = descriptor.has_focus_bounds
-			? descriptor.focus_center
-			: (descriptor.has_gaussian_centroid
-				? descriptor.gaussian_centroid
-				: 0.5f * (minBounds + maxBounds));
+		const Vector3f target = descriptor.has_camera_focus_center
+			? descriptor.camera_focus_center
+			: (descriptor.has_focus_bounds
+				? descriptor.focus_center
+				: (descriptor.has_gaussian_centroid
+					? descriptor.gaussian_centroid
+					: 0.5f * (minBounds + maxBounds)));
 		return focusCameraOnTarget(target, minBounds, maxBounds);
 	}
 
@@ -671,11 +673,13 @@ namespace sibr {
 			return false;
 		}
 
-		const Vector3f localTarget = descriptor.has_focus_bounds
-			? descriptor.focus_center
-			: (descriptor.has_gaussian_centroid
-				? descriptor.gaussian_centroid
-				: 0.5f * (localMin + localMax));
+		const Vector3f localTarget = descriptor.has_camera_focus_center
+			? descriptor.camera_focus_center
+			: (descriptor.has_focus_bounds
+				? descriptor.focus_center
+				: (descriptor.has_gaussian_centroid
+					? descriptor.gaussian_centroid
+					: 0.5f * (localMin + localMax)));
 		const Matrix3f transform = instance.getRotationQuaternion().toRotationMatrix() * instance.getScale();
 		const Vector3f worldTarget = transform * localTarget + instance.getPosition();
 		return focusCameraOnTarget(worldTarget, minBounds, maxBounds);
@@ -687,12 +691,17 @@ namespace sibr {
 			return false;
 		}
 
-		if (descriptor.has_focus_bounds) {
+		if (descriptor.has_camera_focus_center) {
 			return true;
 		}
 
 		const auto residentField = _resourceManager->getCpuFieldShared(assetId);
 		if (residentField) {
+			if (residentField->has_camera_focus_center) {
+				descriptor.has_camera_focus_center = true;
+				descriptor.camera_focus_center = residentField->camera_focus_center;
+				return true;
+			}
 			if (residentField->has_centroid) {
 				descriptor.has_gaussian_centroid = true;
 				descriptor.gaussian_centroid = residentField->centroid;

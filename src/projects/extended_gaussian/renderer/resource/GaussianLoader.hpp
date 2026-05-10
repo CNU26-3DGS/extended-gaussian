@@ -23,6 +23,7 @@ namespace sibr {
 	private:
 		template<int D>
 		static SIBR_OPT_INLINE bool loadPly(const char* filename, GaussianField& output);
+		static bool loadCameraFocus(const boost::filesystem::path& modelPath, GaussianField& output);
 	};
 
     inline float sigmoid(float x) {

@@ -1,9 +1,37 @@
 #include "GaussianLoader.hpp"
 
+#include "picojson/picojson.hpp"
+
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
 #include <fstream>
 #include <regex>
+#include <vector>
 
 namespace fs = boost::filesystem;
+
+namespace {
+	bool isFinite(const sibr::Vector3d& value)
+	{
+		return std::isfinite(value.x()) && std::isfinite(value.y()) && std::isfinite(value.z());
+	}
+
+	bool parseVector3(const picojson::value& value, sibr::Vector3d& out)
+	{
+		if (!value.is<picojson::array>()) {
+			return false;
+		}
+
+		const auto& array = value.get<picojson::array>();
+		if (array.size() != 3 || !array[0].is<double>() || !array[1].is<double>() || !array[2].is<double>()) {
+			return false;
+		}
+
+		out = sibr::Vector3d(array[0].get<double>(), array[1].get<double>(), array[2].get<double>());
+		return isFinite(out);
+	}
+}
 
 std::string findLargestNumberedSubdirectory(const std::string& directoryPath) {
 	fs::path dirPath(directoryPath);
@@ -70,6 +98,59 @@ std::pair<int, int> findArg(const std::string& line, const std::string& name)
 }
 
 namespace sibr {
+	bool GaussianLoader::loadCameraFocus(const boost::filesystem::path& modelPath, GaussianField& output)
+	{
+		const fs::path cameraJsonPath = modelPath / "cameras.json";
+		if (!fs::exists(cameraJsonPath)) {
+			return false;
+		}
+
+		std::ifstream cameraFile(cameraJsonPath.string(), std::ios::in);
+		if (!cameraFile.good()) {
+			SIBR_WRG << "Unable to open cameras.json for camera focus: " << cameraJsonPath.string() << std::endl;
+			return false;
+		}
+
+		picojson::value root;
+		const std::string error = picojson::parse(root, cameraFile);
+		if (!error.empty() || !root.is<picojson::array>()) {
+			SIBR_WRG << "Unable to parse cameras.json for camera focus: " << cameraJsonPath.string() << std::endl;
+			return false;
+		}
+
+		Vector3d positionSum = Vector3d::Zero();
+		size_t cameraCount = 0;
+		for (const auto& frame : root.get<picojson::array>()) {
+			if (!frame.is<picojson::object>()) {
+				continue;
+			}
+
+			const auto& object = frame.get<picojson::object>();
+			const auto positionIt = object.find("position");
+			if (positionIt == object.end()) {
+				continue;
+			}
+
+			Vector3d position = Vector3d::Zero();
+			if (!parseVector3(positionIt->second, position)) {
+				continue;
+			}
+			positionSum += position;
+			++cameraCount;
+		}
+
+		if (cameraCount == 0) {
+			SIBR_WRG << "Unable to compute camera position center from " << cameraJsonPath.string() << std::endl;
+			return false;
+		}
+
+		output.has_camera_focus_center = true;
+		output.camera_focus_center = (positionSum / static_cast<double>(cameraCount)).cast<float>();
+		SIBR_LOG << "Computed camera position center from " << cameraCount << " camera(s): "
+			<< output.camera_focus_center.transpose() << std::endl;
+		return true;
+	}
+
 	GaussianField::UPtr GaussianLoader::load(const std::string& modelPath) {
 		auto field = std::make_unique<GaussianField>();
 		field->path = modelPath;
@@ -132,7 +213,8 @@ namespace sibr {
 
 		if (!success) return nullptr;
 
+		loadCameraFocus(p, *field);
+
 		return field;
 	}	
 }
-
