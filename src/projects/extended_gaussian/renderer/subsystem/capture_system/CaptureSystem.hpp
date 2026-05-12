@@ -4,7 +4,7 @@
 #include <core/system/Config.hpp>
 
 #include "Config.hpp"
-#include "capture.hpp"
+#include "Capture.hpp"
 
 #include <unordered_map>
 
