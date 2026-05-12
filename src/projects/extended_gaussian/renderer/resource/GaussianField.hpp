@@ -32,6 +32,8 @@ namespace sibr {
 		Vector3f focus_center = Vector3f::Zero();
 		Vector3f focus_bounds_min = Vector3f::Zero();
 		Vector3f focus_bounds_max = Vector3f::Zero();
+		bool has_camera_focus_center = false;
+		Vector3f camera_focus_center = Vector3f::Zero();
 		GaussianSet::UPtr root;
 	};
 }
