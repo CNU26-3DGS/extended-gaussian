@@ -56,7 +56,7 @@ namespace sibr
 		void syncRenderInstanceAsset(RenderGaussianInstance& renderInstance, const GaussianInstance& instance);
 		void ensureManualGpuResidency();
 
-		int max_sh_degree = 3;
+		int max_sh_degree = 1;
 		int device;
 		ResourceManager* resources = nullptr;
 		std::unordered_map<std::string, GaussianView::Ptr> views;

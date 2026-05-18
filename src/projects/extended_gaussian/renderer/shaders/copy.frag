@@ -27,13 +27,13 @@ in vec4 texcoord;
 
 void main(void)
 {
-	int x = int(texcoord.x * width);
+	int x = clamp(int(texcoord.x * width), 0, width - 1);
 	int y;
 	
 	if(flip)
-		y = height - 1 - int(texcoord.y * height);
+		y = height - 1 - clamp(int(texcoord.y * height), 0, height - 1);
 	else
-		y = int(texcoord.y * height);
+		y = clamp(int(texcoord.y * height), 0, height - 1);
 	
 	float r = source.data[0 * width * height + (y * width + x)];
 	float g = source.data[1 * width * height + (y * width + x)];

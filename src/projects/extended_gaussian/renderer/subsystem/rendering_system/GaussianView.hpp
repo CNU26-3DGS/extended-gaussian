@@ -31,7 +31,13 @@ namespace sibr {
 	public:
 		SIBR_CLASS_PTR(GaussianView);
 
-		GaussianView(const RenderingSystem* p_owner, uint render_w, uint render_h, bool useInterop);
+		GaussianView(
+			const RenderingSystem* p_owner,
+			uint render_w,
+			uint render_h,
+			bool useInterop,
+			float renderScale = 1.0f,
+			int maxSplatRadius = 0);
 
 		virtual ~GaussianView() override;
 
@@ -43,6 +49,8 @@ namespace sibr {
 		size_t worldBufferBytes() const;
 		size_t scratchBufferBytes() const;
 		size_t outputInteropBytes() const;
+		float renderScale() const;
+		int maxSplatRadius() const;
 
 	private:
 		bool resizeWorldBuffersIfNeeded(size_t count);
@@ -65,14 +73,16 @@ namespace sibr {
 			float scale,
 			float* w_pos_ptr, float* w_rot_ptr, float* w_scale_ptr
 		);
-		void appendSHsToWorld(const float* src_shs, int count, int offset, int src_sh_degree, int dst_sh_degree);
-		void appendOpacitiesToWorld(const float* src_opacities, int count, int offset);
+		void appendSHsToWorld(const float* src_shs, int count, size_t offset, int src_sh_degree, int dst_sh_degree);
+		void appendOpacitiesToWorld(const float* src_opacities, int count, size_t offset);
 
 		const RenderingSystem* owner;
 
 		bool antialiasing = false;
 		bool cropping = false;
 		bool fastCulling = true;
+		float render_scale = 1.0f;
+		int max_splat_radius = 0;
 
 		GLuint imageBuffer;
 		cudaGraphicsResource_t imageBufferCuda;
@@ -84,7 +94,7 @@ namespace sibr {
 
 		size_t current_world_gausians_count = 0;
 		size_t max_gaussians_count = 0;
-		int current_world_sh_degree = 3;
+		int current_world_sh_degree = 1;
 		float* world_pos_cuda = nullptr;
 		float* world_rot_cuda = nullptr;
 		float* world_scale_cuda = nullptr;

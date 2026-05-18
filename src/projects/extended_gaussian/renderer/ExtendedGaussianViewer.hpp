@@ -96,7 +96,8 @@ namespace sibr {
 		ManifestStore _manifestStore;
 		std::string _loadedManifestPath;
 		std::string _currentPhase;
-		int _maxShDegree = 3;
+		std::string _resourceBrowserStatus;
+		int _maxShDegree = 1;
 		double _appTimeSec = 0.0;
 		uint64_t _frameIndex = 0;
 	};

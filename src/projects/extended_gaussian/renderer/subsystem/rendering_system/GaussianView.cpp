@@ -107,8 +107,14 @@ namespace sibr {
 		return lambda;
 	}
 
-	GaussianView::GaussianView(const RenderingSystem* p_owner, uint render_w, uint render_h, bool useInterop)
-		: owner(p_owner), ViewBase(render_w, render_h) {
+	GaussianView::GaussianView(
+		const RenderingSystem* p_owner,
+		uint render_w,
+		uint render_h,
+		bool useInterop,
+		float renderScale,
+		int maxSplatRadius)
+		: owner(p_owner), ViewBase(render_w, render_h), render_scale(renderScale), max_splat_radius(maxSplatRadius) {
 
 		copyRenderer = new BufferCopyRenderer();
 		copyRenderer->flip() = true;
@@ -232,7 +238,7 @@ namespace sibr {
 			geomBufferFunc,
 			binningBufferFunc,
 			imgBufferFunc,
-			totalCount,
+			static_cast<int>(totalCount),
 			current_world_sh_degree,
 			static_cast<int>(renderShCoefficientCount()),
 			background_cuda,
@@ -256,7 +262,8 @@ namespace sibr {
 			nullptr,
 			world_rect_cuda,
 			nullptr,
-			nullptr
+			nullptr,
+			max_splat_radius
 		);
 
 		if (!_interop_failed) {
@@ -320,9 +327,19 @@ namespace sibr {
 		return totalBytes;
 	}
 
+	float GaussianView::renderScale() const
+	{
+		return render_scale;
+	}
+
+	int GaussianView::maxSplatRadius() const
+	{
+		return max_splat_radius;
+	}
+
 	int GaussianView::renderShDegree() const
 	{
-		return owner ? clampShDegree(owner->maxShDegree()) : 3;
+		return owner ? clampShDegree(owner->maxShDegree()) : 1;
 	}
 
 	size_t GaussianView::renderShCoefficientCount() const
@@ -507,7 +524,7 @@ namespace sibr {
 		);
 	}
 
-	void GaussianView::appendSHsToWorld(const float* src_shs, int count, int offset, int src_sh_degree, int dst_sh_degree)
+	void GaussianView::appendSHsToWorld(const float* src_shs, int count, size_t offset, int src_sh_degree, int dst_sh_degree)
 	{
 		const int src_coeffs = static_cast<int>(shCoefficientCount(src_sh_degree));
 		const int dst_coeffs = static_cast<int>(shCoefficientCount(dst_sh_degree));
@@ -519,7 +536,7 @@ namespace sibr {
 			blocks,
 			threads,
 			count,
-			offset,
+			static_cast<int>(offset),
 			src_shs,
 			src_coeffs,
 			world_shs_cuda,
@@ -527,7 +544,7 @@ namespace sibr {
 		);
 	}
 
-	void GaussianView::appendOpacitiesToWorld(const float* src_opacities, int count, int offset)
+	void GaussianView::appendOpacitiesToWorld(const float* src_opacities, int count, size_t offset)
 	{
 		float* dst_ptr = world_opacity_cuda + offset;
 		size_t size_bytes = count * sizeof(float);

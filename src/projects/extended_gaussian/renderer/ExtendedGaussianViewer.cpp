@@ -124,11 +124,11 @@ namespace sibr {
 			ImGui::GetStyle().WindowBorderSize = 0.0;
 		}
 
-		_maxShDegree = clampShDegree(getCommandLineArgs().get<int>("max-sh-degree", 3));
+		_maxShDegree = clampShDegree(getCommandLineArgs().get<int>("max-sh-degree", 1));
 		CommandLineArgs::getGlobal().registerCommand(
 			"max-sh-degree",
 			"maximum spherical harmonics degree uploaded to GPU assets (0-3)",
-			"3");
+			"1");
 
 		_scene = std::make_unique<GaussianScene>();
 		_resourceManager = std::make_unique<ResourceManager>();
@@ -480,6 +480,11 @@ namespace sibr {
 	bool ExtendedGaussianViewer::loadManifestFile(const std::string& path)
 	{
 		if (!_manifestStore.load(path)) {
+			_loadedManifestPath.clear();
+			if (auto* renderingSystem = getRenderingSystem()) {
+				renderingSystem->setManifest(nullptr);
+			}
+			_resourceBrowserStatus = "Manifest load failed. Check that the JSON exists and contains valid model_dir paths.";
 			return false;
 		}
 
@@ -502,6 +507,7 @@ namespace sibr {
 		}
 
 		focusCameraOnManifestBounds();
+		_resourceBrowserStatus = "Manifest loaded: " + std::to_string(_manifestStore.assets().size()) + " asset(s).";
 		return true;
 	}
 
@@ -1091,24 +1097,11 @@ namespace sibr {
 				}
 			}
 			ImGui::SameLine();
-			const char* shDegreeLabels[] = { "SH 0", "SH 1", "SH 2", "SH 3" };
-			int selectedShDegree = clampShDegree(_maxShDegree);
-			ImGui::PushItemWidth(100.0f);
-			if (ImGui::BeginCombo("Max SH", shDegreeLabels[selectedShDegree])) {
-				for (int degree = 0; degree <= 3; ++degree) {
-					const bool selected = selectedShDegree == degree;
-					if (ImGui::Selectable(shDegreeLabels[degree], selected)) {
-						setMaxShDegree(degree);
-						selectedShDegree = degree;
-					}
-					if (selected) {
-						ImGui::SetItemDefaultFocus();
-					}
-				}
-				ImGui::EndCombo();
+			ImGui::Text("Max SH: SH %d", clampShDegree(_maxShDegree));
+			ImGui::TextDisabled("Max SH is fixed by the low-VRAM default profile. Resident GPU assets are not reuploaded automatically.");
+			if (!_resourceBrowserStatus.empty()) {
+				ImGui::TextWrapped("%s", _resourceBrowserStatus.c_str());
 			}
-			ImGui::PopItemWidth();
-			ImGui::TextDisabled("Max SH applies to future GPU uploads. Resident GPU assets are not reuploaded automatically.");
 			ImGui::Separator();
 
 			ImGui::TextWrapped("Manifest: %s", _loadedManifestPath.empty() ? "(none)" : _loadedManifestPath.c_str());
@@ -1118,6 +1111,9 @@ namespace sibr {
 			ImGui::Text("  GPU Assets:       %s MB", formatMegabytes(GPUResourceManager::getInstance().totalBytes()).c_str());
 			if (renderingSystem) {
 				if (const auto* view = renderingSystem->getView("Gaussian View")) {
+					const Vector2i& internalResolution = view->getResolution();
+					ImGui::Text("  Render scale:     %.2f (%dx%d)", view->renderScale(), internalResolution.x(), internalResolution.y());
+					ImGui::Text("  Splat radius cap: %d px", view->maxSplatRadius());
 					ImGui::Text("  World buffers:    %s MB", formatMegabytes(view->worldBufferBytes()).c_str());
 					ImGui::Text("  Scratch (rast):   %s MB", formatMegabytes(view->scratchBufferBytes()).c_str());
 					ImGui::Text("  Output+Interop:   %s MB", formatMegabytes(view->outputInteropBytes()).c_str());

@@ -4,11 +4,22 @@
 #include <projects/extended_gaussian/renderer/ExtendedGaussianViewer.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
+	constexpr float kDefaultRenderScale = 0.75f;
+	constexpr int kDefaultMaxSplatRadius = 96;
+
 	int clampShDegree(int degree)
 	{
 		return std::max(0, std::min(3, degree));
+	}
+
+	sibr::Vector2i scaledRenderSize(const sibr::Vector2i& size)
+	{
+		return sibr::Vector2i(
+			std::max(1, static_cast<int>(std::round(static_cast<float>(size.x()) * kDefaultRenderScale))),
+			std::max(1, static_cast<int>(std::round(static_cast<float>(size.y()) * kDefaultRenderScale))));
 	}
 }
 
@@ -49,7 +60,14 @@ namespace sibr {
 
 		// Create View
 		Vector2i winSize = owner.getWindowSize();
-		auto view = std::make_shared<GaussianView>(this, winSize.x(), winSize.y(), true);
+		const Vector2i renderSize = scaledRenderSize(winSize);
+		auto view = std::make_shared<GaussianView>(
+			this,
+			renderSize.x(),
+			renderSize.y(),
+			true,
+			kDefaultRenderScale,
+			kDefaultMaxSplatRadius);
 
 		// View flag
 		ImGuiWindowFlags flags = 
