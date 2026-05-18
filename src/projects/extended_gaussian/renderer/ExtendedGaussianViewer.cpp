@@ -8,10 +8,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cuda_runtime.h>
 #include <iomanip>
 #include <sstream>
+#include <vector>
+#include <boost/filesystem.hpp>
 
 namespace sibr {
 	// SIBR 핸들러 상속
@@ -144,6 +147,10 @@ namespace sibr {
 				viewIt->second.handler = myCustomHandler;
 				isHandlerSwapped = true;
 			}
+
+			if (auto customHandler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler)) {
+				customHandler->customCameraSpeed = _movementSpeed;
+			}
 		}
 
 		MultiViewBase::onUpdate(input);
@@ -161,8 +168,6 @@ namespace sibr {
 		glClear(GL_COLOR_BUFFER_BIT);
 		glClearColor(1.f, 1.f, 1.f, 1.f);
 
-		onGui(win);
-
 		RenderingSystem* renderingSystem = getRenderingSystem();
 		if (renderingSystem) {
 			ViewerContext context;
@@ -179,7 +184,21 @@ namespace sibr {
 			renderingSystem->tickStreaming(context);
 		}
 
+		auto viewIt = _ibrSubViews.find("Gaussian View");
+		if (viewIt != _ibrSubViews.end()) {
+			const Vector2i winSize = win.size();
+			const Viewport fullViewport(0.0f, 0.0f, static_cast<float>(winSize.x()), static_cast<float>(winSize.y()));
+			if (viewIt->second.viewport.finalWidth() != fullViewport.finalWidth()
+				|| viewIt->second.viewport.finalHeight() != fullViewport.finalHeight()
+				|| viewIt->second.viewport.finalLeft() != fullViewport.finalLeft()
+				|| viewIt->second.viewport.finalTop() != fullViewport.finalTop()) {
+				viewIt->second.viewport = fullViewport;
+				viewIt->second.shouldUpdateLayout = true;
+			}
+		}
+
 		MultiViewBase::onRender(win);
+		onGui(win);
 		++_frameIndex;
 
 		_fpsCounter.update(_enableGUI && _showGUI);
@@ -187,6 +206,376 @@ namespace sibr {
 
 	void ExtendedGaussianViewer::onGui(Window& win)
 	{
+		if (!_showGUI) {
+			return;
+		}
+
+		const ImVec2 viewportPos(0.0f, 0.0f);
+		const ImVec2 viewportSize(static_cast<float>(win.size().x()), static_cast<float>(win.size().y()));
+		const float baseWidth = 1280.0f;
+		const float baseHeight = 800.0f;
+		float uiScale = std::min(viewportSize.x / baseWidth, viewportSize.y / baseHeight);
+		uiScale = std::max(0.72f, std::min(uiScale, 1.45f));
+
+		const auto assetIds = _resourceManager ? _resourceManager->listAssetIds() : std::vector<AssetId>();
+		const bool hasContent = !_loadedGaussianPath.empty() || !_loadedManifestPath.empty() || !assetIds.empty();
+
+		ImGui::SetNextWindowPos(viewportPos);
+		ImGui::SetNextWindowSize(viewportSize);
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, hasContent ? 0.0f : 1.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		const ImGuiWindowFlags rootFlags =
+			ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
+		ImGui::Begin("Extended Gaussian Overlay", nullptr, rootFlags);
+		ImGui::SetWindowFontScale(uiScale);
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		const ImVec2 viewerMin = ImGui::GetWindowPos();
+		const ImVec2 viewerSize = ImGui::GetWindowSize();
+		const ImVec2 viewerMax(viewerMin.x + viewerSize.x, viewerMin.y + viewerSize.y);
+		const float margin = 24.0f * uiScale;
+		const float panelRounding = 8.0f * uiScale;
+		const float rightPanelWidth = 244.0f * uiScale;
+		const ImU32 backgroundColor = IM_COL32(248, 250, 252, 255);
+		const ImU32 cardColor = IM_COL32(255, 255, 255, 236);
+		const ImU32 mainTextColor = IM_COL32(15, 23, 42, 255);
+		const ImU32 subTextColor = IM_COL32(100, 116, 139, 255);
+		const ImU32 accentColor = IM_COL32(14, 165, 233, 255);
+		const ImU32 accentSoftColor = IM_COL32(219, 242, 255, 245);
+		const ImU32 borderColor = IM_COL32(226, 232, 240, 230);
+		const ImU32 roomFill = IM_COL32(229, 231, 235, 210);
+		const ImU32 activeRoomFill = IM_COL32(255, 255, 255, 248);
+		const ImU32 officeFill = IM_COL32(250, 232, 255, 210);
+
+		if (!hasContent) {
+			drawList->AddRectFilled(viewerMin, viewerMax, backgroundColor);
+		}
+		drawList->AddRectFilled(viewerMin, ImVec2(viewerMax.x, viewerMin.y + 64.0f * uiScale), IM_COL32(255, 255, 255, hasContent ? 170 : 255));
+		drawList->AddLine(ImVec2(viewerMin.x, viewerMin.y + 64.0f * uiScale), ImVec2(viewerMax.x, viewerMin.y + 64.0f * uiScale), borderColor, 1.0f * uiScale);
+
+		ImGui::SetCursorScreenPos(ImVec2(viewerMin.x + margin, viewerMin.y + 18.0f * uiScale));
+		ImGui::TextColored(ImVec4(0.059f, 0.090f, 0.165f, 1.0f), "Extended Gaussian Viewer");
+		ImGui::SameLine();
+		const char* loadedLabel = _loadedManifestPath.empty() ? _loadedGaussianPath.c_str() : _loadedManifestPath.c_str();
+		ImGui::TextColored(ImVec4(0.392f, 0.455f, 0.545f, 1.0f), "%s", loadedLabel[0] == '\0' ? "No model loaded" : loadedLabel);
+
+		ImGui::SetCursorScreenPos(ImVec2(viewerMax.x - margin - 360.0f * uiScale, viewerMin.y + 15.0f * uiScale));
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.056f, 0.647f, 0.914f, 0.94f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.125f, 0.710f, 0.960f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.028f, 0.525f, 0.760f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * uiScale);
+		if (ImGui::Button("Open Model", ImVec2(112.0f * uiScale, 32.0f * uiScale))) {
+			std::string path;
+			if (showFilePicker(path, FilePickerMode::Default, "", "ply")) {
+				importGaussianPath(path);
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Open Folder", ImVec2(112.0f * uiScale, 32.0f * uiScale))) {
+			std::string path;
+			if (showFilePicker(path, FilePickerMode::Directory)) {
+				importGaussianPath(path);
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Manifest", ImVec2(104.0f * uiScale, 32.0f * uiScale))) {
+			std::string manifestPath;
+			if (showFilePicker(manifestPath, FilePickerMode::Default, "", "json")) {
+				loadManifestFile(manifestPath);
+			}
+		}
+		ImGui::PopStyleVar();
+		ImGui::PopStyleColor(4);
+
+		if (!hasContent) {
+			const char* dropTitle = "Open a Gaussian model folder or point_cloud.ply";
+			const ImVec2 titleSize = ImGui::CalcTextSize(dropTitle);
+			const ImVec2 center((viewerMin.x + viewerMax.x) * 0.5f, (viewerMin.y + viewerMax.y) * 0.5f);
+			drawList->AddText(ImVec2(center.x - titleSize.x * 0.5f, center.y - 20.0f * uiScale), mainTextColor, dropTitle);
+		}
+
+		struct FavoriteRoom {
+			int id;
+			const char* name;
+		};
+		const FavoriteRoom favoriteRooms[] = {
+			{ 401, "401" }, { 403, "403" }, { 404, "404-1" }, { 405, "405" },
+			{ 409, "409" }, { 410, "410" }, { 411, "411" }, { 412, "412" },
+			{ 413, "413" }, { 414, "414" }, { 415, "415" }, { 416, "416" },
+		};
+		auto selectRoom = [&](int roomId) {
+			_currentRoom = roomId;
+			_currentPhase = roomId == 0 ? "corridor" : std::to_string(roomId);
+		};
+
+		const ImVec2 favMin(viewerMax.x - rightPanelWidth - margin, viewerMin.y + 88.0f * uiScale);
+		const ImVec2 favMax(viewerMax.x - margin, favMin.y + 420.0f * uiScale);
+		drawList->AddRectFilled(favMin, favMax, cardColor, panelRounding);
+		drawList->AddRect(favMin, favMax, borderColor, panelRounding, 0, 1.0f * uiScale);
+
+		ImGui::SetCursorScreenPos(ImVec2(favMin.x + 12.0f * uiScale, favMin.y + 12.0f * uiScale));
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.056f, 0.647f, 0.914f, 0.92f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.125f, 0.710f, 0.960f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.028f, 0.525f, 0.760f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * uiScale);
+		ImGui::Button("Favorites", ImVec2(favMax.x - favMin.x - 24.0f * uiScale, 30.0f * uiScale));
+		ImGui::PopStyleVar();
+		ImGui::PopStyleColor(4);
+
+		ImGui::SetCursorScreenPos(ImVec2(favMin.x + 12.0f * uiScale, favMin.y + 52.0f * uiScale));
+		ImGui::BeginChild("FavoritesList", ImVec2(favMax.x - favMin.x - 24.0f * uiScale, 352.0f * uiScale), false);
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * uiScale);
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f * uiScale, 5.0f * uiScale));
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 1.0f, 1.0f, 0.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.925f, 0.973f, 1.0f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.875f, 0.949f, 1.0f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.925f, 0.973f, 1.0f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.875f, 0.949f, 1.0f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.784f, 0.910f, 1.0f, 1.0f));
+		for (int pass = 0; pass < 2; ++pass) {
+			const bool wantBookmarked = pass == 0;
+			for (int i = 0; i < IM_ARRAYSIZE(favoriteRooms); ++i) {
+				if (_favoriteBookmarks[i] != wantBookmarked) {
+					continue;
+				}
+				ImGui::PushID(favoriteRooms[i].id);
+				ImGui::PushStyleColor(ImGuiCol_Text, _favoriteBookmarks[i] ? ImVec4(0.965f, 0.620f, 0.043f, 1.0f) : ImVec4(0.392f, 0.455f, 0.545f, 1.0f));
+				if (ImGui::Button(_favoriteBookmarks[i] ? "*" : "+", ImVec2(30.0f * uiScale, 0.0f))) {
+					_favoriteBookmarks[i] = !_favoriteBookmarks[i];
+				}
+				ImGui::PopStyleColor();
+				ImGui::SameLine();
+				if (ImGui::Selectable(favoriteRooms[i].name, _currentRoom == favoriteRooms[i].id, 0, ImVec2(0.0f, 30.0f * uiScale))) {
+					selectRoom(favoriteRooms[i].id);
+				}
+				ImGui::PopID();
+			}
+		}
+		ImGui::PopStyleColor(6);
+		ImGui::PopStyleVar(2);
+		ImGui::EndChild();
+
+		const bool showFullMinimap = _minimapLarge;
+		const ImVec2 mapMin(viewerMin.x + margin, viewerMin.y + 88.0f * uiScale);
+		const ImVec2 mapSize(showFullMinimap ? 584.0f * uiScale : 300.0f * uiScale, 170.0f * uiScale);
+		const ImVec2 mapMax(mapMin.x + mapSize.x, mapMin.y + mapSize.y);
+		drawList->AddRectFilled(mapMin, mapMax, IM_COL32(255, 255, 255, 180), panelRounding);
+		drawList->AddRect(mapMin, mapMax, borderColor, panelRounding, 0, 1.0f * uiScale);
+
+		ImVec2 selectedRoomCenter(42.0f, 29.0f);
+		switch (_currentRoom) {
+		case 403: selectedRoomCenter = ImVec2(119.0f, 29.0f); break;
+		case 404: selectedRoomCenter = ImVec2(189.0f, 29.0f); break;
+		case 405: selectedRoomCenter = ImVec2(255.0f, 29.0f); break;
+		case 0: selectedRoomCenter = ImVec2(280.0f, 66.5f); break;
+		case 409: selectedRoomCenter = ImVec2(536.0f, 119.0f); break;
+		case 410: selectedRoomCenter = ImVec2(471.0f, 119.0f); break;
+		case 411: selectedRoomCenter = ImVec2(396.0f, 119.0f); break;
+		case 412: selectedRoomCenter = ImVec2(331.0f, 119.0f); break;
+		case 413: selectedRoomCenter = ImVec2(267.0f, 119.0f); break;
+		case 414: selectedRoomCenter = ImVec2(195.0f, 119.0f); break;
+		case 415: selectedRoomCenter = ImVec2(117.0f, 119.0f); break;
+		case 416: selectedRoomCenter = ImVec2(39.0f, 119.0f); break;
+		default: break;
+		}
+
+		const float sx = uiScale;
+		const float sy = uiScale;
+		const ImVec2 mapCenter((mapMin.x + mapMax.x) * 0.5f, (mapMin.y + mapMax.y) * 0.5f);
+		const ImVec2 planMin = showFullMinimap
+			? ImVec2(mapMin.x + 12.0f * uiScale, mapMin.y + 10.0f * uiScale)
+			: ImVec2(mapCenter.x - selectedRoomCenter.x * sx, mapCenter.y - selectedRoomCenter.y * sy);
+		auto drawSpace = [&](float x, float y, float w, float h, const char* label, int roomId, bool selectable, ImU32 customFill = 0, float textScale = 1.0f) {
+			const ImVec2 a(planMin.x + x * sx, planMin.y + y * sy);
+			const ImVec2 b(planMin.x + (x + w) * sx, planMin.y + (y + h) * sy);
+			const ImGuiIO& io = ImGui::GetIO();
+			const bool hovered = io.MousePos.x >= a.x && io.MousePos.x <= b.x && io.MousePos.y >= a.y && io.MousePos.y <= b.y
+				&& io.MousePos.x >= mapMin.x && io.MousePos.x <= mapMax.x && io.MousePos.y >= mapMin.y && io.MousePos.y <= mapMax.y;
+			if (selectable && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+				selectRoom(roomId);
+			}
+			const bool active = selectable && roomId == _currentRoom;
+			drawList->AddRectFilled(a, b, active ? activeRoomFill : (customFill ? customFill : roomFill), 2.0f * uiScale);
+			drawList->AddRect(a, b, active ? accentColor : (hovered && selectable ? accentColor : IM_COL32(100, 116, 139, 210)), 2.0f * uiScale, 0, active ? 2.0f * uiScale : 1.0f * uiScale);
+			const ImVec2 textSize = ImGui::CalcTextSize(label);
+			const ImVec2 textPos((a.x + b.x - textSize.x * textScale) * 0.5f, (a.y + b.y - textSize.y * textScale) * 0.5f);
+			drawList->AddText(nullptr, ImGui::GetFontSize() * textScale, textPos, mainTextColor, label);
+		};
+
+		drawList->PushClipRect(mapMin, mapMax, true);
+		const ImGuiIO& io = ImGui::GetIO();
+		const bool corridorHovered =
+			io.MousePos.x >= mapMin.x && io.MousePos.x <= mapMax.x && io.MousePos.y >= mapMin.y && io.MousePos.y <= mapMax.y &&
+			(((io.MousePos.x >= planMin.x + 0.0f * sx && io.MousePos.x <= planMin.x + 560.0f * sx) && (io.MousePos.y >= planMin.y + 58.0f * sy && io.MousePos.y <= planMin.y + 88.0f * sy)) ||
+			((io.MousePos.x >= planMin.x + 286.0f * sx && io.MousePos.x <= planMin.x + 350.0f * sx) && (io.MousePos.y >= planMin.y + 0.0f * sy && io.MousePos.y <= planMin.y + 88.0f * sy)) ||
+			((io.MousePos.x >= planMin.x + 350.0f * sx && io.MousePos.x <= planMin.x + 560.0f * sx) && (io.MousePos.y >= planMin.y + 45.0f * sy && io.MousePos.y <= planMin.y + 88.0f * sy)));
+		if (corridorHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			selectRoom(0);
+		}
+		const bool corridorActive = _currentRoom == 0;
+		drawList->AddRectFilled(ImVec2(planMin.x + 0.0f * sx, planMin.y + 58.0f * sy), ImVec2(planMin.x + 560.0f * sx, planMin.y + 88.0f * sy), corridorActive ? activeRoomFill : roomFill, 2.0f * uiScale);
+		drawList->AddRectFilled(ImVec2(planMin.x + 286.0f * sx, planMin.y + 0.0f * sy), ImVec2(planMin.x + 350.0f * sx, planMin.y + 88.0f * sy), corridorActive ? activeRoomFill : roomFill, 2.0f * uiScale);
+		drawList->AddRectFilled(ImVec2(planMin.x + 350.0f * sx, planMin.y + 45.0f * sy), ImVec2(planMin.x + 560.0f * sx, planMin.y + 88.0f * sy), corridorActive ? activeRoomFill : roomFill, 2.0f * uiScale);
+		ImVec2 corridorOutline[] = {
+			ImVec2(planMin.x + 0.0f * sx, planMin.y + 58.0f * sy),
+			ImVec2(planMin.x + 286.0f * sx, planMin.y + 58.0f * sy),
+			ImVec2(planMin.x + 286.0f * sx, planMin.y + 0.0f * sy),
+			ImVec2(planMin.x + 350.0f * sx, planMin.y + 0.0f * sy),
+			ImVec2(planMin.x + 350.0f * sx, planMin.y + 45.0f * sy),
+			ImVec2(planMin.x + 560.0f * sx, planMin.y + 45.0f * sy),
+			ImVec2(planMin.x + 560.0f * sx, planMin.y + 88.0f * sy),
+			ImVec2(planMin.x + 0.0f * sx, planMin.y + 88.0f * sy),
+		};
+		drawList->AddPolyline(corridorOutline, IM_ARRAYSIZE(corridorOutline), corridorActive ? accentColor : (corridorHovered ? accentColor : IM_COL32(100, 116, 139, 210)), ImDrawFlags_Closed, corridorActive ? 2.0f * uiScale : 1.0f * uiScale);
+		drawSpace(0, 0, 84, 58, "401", 401, true);
+		drawSpace(84, 0, 70, 58, "403", 403, true);
+		drawSpace(154, 0, 70, 58, "404", 404, true);
+		drawSpace(224, 0, 62, 58, "405", 405, true);
+		drawSpace(350, 0, 76, 45, "406", 406, false, officeFill);
+		drawSpace(426, 0, 36, 45, "407", 407, false, officeFill);
+		drawSpace(462, 0, 58, 45, "Lab", 0, false, officeFill, 0.75f);
+		drawSpace(520, 0, 40, 45, "408", 408, false, officeFill);
+		drawSpace(0, 88, 78, 62, "416", 416, true);
+		drawSpace(78, 88, 78, 62, "415", 415, true);
+		drawSpace(156, 88, 78, 62, "414", 414, true);
+		drawSpace(234, 88, 66, 62, "413", 413, true);
+		drawSpace(300, 88, 62, 62, "412", 412, true);
+		drawSpace(362, 88, 68, 62, "411", 411, true);
+		drawSpace(430, 88, 82, 62, "410", 410, true);
+		drawSpace(512, 88, 48, 62, "409", 409, true);
+		drawList->PopClipRect();
+
+		ImGui::SetCursorScreenPos(ImVec2(mapMax.x + 8.0f * uiScale, mapMin.y));
+		if (ImGui::Button(showFullMinimap ? "Focus" : "Full", ImVec2(70.0f * uiScale, 30.0f * uiScale))) {
+			_minimapLarge = !_minimapLarge;
+		}
+
+		ImVec2 moveVector(0.0f, 0.0f);
+		if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) moveVector.x -= 1.0f;
+		if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) moveVector.x += 1.0f;
+		if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) moveVector.y -= 1.0f;
+		if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) moveVector.y += 1.0f;
+
+		const ImVec2 dpadCenter(viewerMin.x + 142.0f * uiScale, viewerMax.y - 138.0f * uiScale);
+		const float dpadRadius = 82.0f * uiScale;
+		const float dpadDx = io.MousePos.x - dpadCenter.x;
+		const float dpadDy = io.MousePos.y - dpadCenter.y;
+		if ((dpadDx * dpadDx + dpadDy * dpadDy) <= dpadRadius * dpadRadius && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			moveVector.x = dpadDx / dpadRadius;
+			moveVector.y = dpadDy / dpadRadius;
+		}
+		applyOverlayMove(moveVector.x, moveVector.y);
+
+		drawList->AddCircleFilled(dpadCenter, dpadRadius, IM_COL32(15, 23, 42, 205), 64);
+		drawList->AddCircle(dpadCenter, dpadRadius, accentColor, 64, 2.0f * uiScale);
+		const bool upActive = moveVector.y < -0.25f;
+		const bool downActive = moveVector.y > 0.25f;
+		const bool leftActive = moveVector.x < -0.25f;
+		const bool rightActive = moveVector.x > 0.25f;
+		auto drawKey = [&](const char* label, int direction, bool active) {
+			ImVec2 points[5];
+			ImVec2 labelCenter = dpadCenter;
+			const float keyHalf = 20.0f * uiScale;
+			const float keyOuter = 62.0f * uiScale;
+			const float keyInner = 27.0f * uiScale;
+			const float keyTip = 10.0f * uiScale;
+			if (direction == 0) {
+				points[0] = ImVec2(dpadCenter.x - keyHalf, dpadCenter.y - keyOuter);
+				points[1] = ImVec2(dpadCenter.x + keyHalf, dpadCenter.y - keyOuter);
+				points[2] = ImVec2(dpadCenter.x + keyHalf, dpadCenter.y - keyInner);
+				points[3] = ImVec2(dpadCenter.x, dpadCenter.y - keyTip);
+				points[4] = ImVec2(dpadCenter.x - keyHalf, dpadCenter.y - keyInner);
+				labelCenter.y -= (keyOuter + keyInner) * 0.5f;
+			}
+			else if (direction == 1) {
+				points[0] = ImVec2(dpadCenter.x + keyOuter, dpadCenter.y - keyHalf);
+				points[1] = ImVec2(dpadCenter.x + keyOuter, dpadCenter.y + keyHalf);
+				points[2] = ImVec2(dpadCenter.x + keyInner, dpadCenter.y + keyHalf);
+				points[3] = ImVec2(dpadCenter.x + keyTip, dpadCenter.y);
+				points[4] = ImVec2(dpadCenter.x + keyInner, dpadCenter.y - keyHalf);
+				labelCenter.x += (keyOuter + keyInner) * 0.5f;
+			}
+			else if (direction == 2) {
+				points[0] = ImVec2(dpadCenter.x + keyHalf, dpadCenter.y + keyOuter);
+				points[1] = ImVec2(dpadCenter.x - keyHalf, dpadCenter.y + keyOuter);
+				points[2] = ImVec2(dpadCenter.x - keyHalf, dpadCenter.y + keyInner);
+				points[3] = ImVec2(dpadCenter.x, dpadCenter.y + keyTip);
+				points[4] = ImVec2(dpadCenter.x + keyHalf, dpadCenter.y + keyInner);
+				labelCenter.y += (keyOuter + keyInner) * 0.5f;
+			}
+			else {
+				points[0] = ImVec2(dpadCenter.x - keyOuter, dpadCenter.y + keyHalf);
+				points[1] = ImVec2(dpadCenter.x - keyOuter, dpadCenter.y - keyHalf);
+				points[2] = ImVec2(dpadCenter.x - keyInner, dpadCenter.y - keyHalf);
+				points[3] = ImVec2(dpadCenter.x - keyTip, dpadCenter.y);
+				points[4] = ImVec2(dpadCenter.x - keyInner, dpadCenter.y + keyHalf);
+				labelCenter.x -= (keyOuter + keyInner) * 0.5f;
+			}
+
+			drawList->AddConvexPolyFilled(points, IM_ARRAYSIZE(points), active ? accentSoftColor : IM_COL32(255, 255, 255, 235));
+			drawList->AddPolyline(points, IM_ARRAYSIZE(points), active ? accentColor : borderColor, ImDrawFlags_Closed, active ? 1.8f * uiScale : 1.0f * uiScale);
+			const ImVec2 textSize = ImGui::CalcTextSize(label);
+			drawList->AddText(ImVec2(labelCenter.x - textSize.x * 0.5f, labelCenter.y - textSize.y * 0.5f), mainTextColor, label);
+		};
+		drawKey("W", 0, upActive);
+		drawKey("D", 1, rightActive);
+		drawKey("S", 2, downActive);
+		drawKey("A", 3, leftActive);
+		drawList->AddQuadFilled(
+			ImVec2(dpadCenter.x, dpadCenter.y - 9.0f * uiScale),
+			ImVec2(dpadCenter.x + 9.0f * uiScale, dpadCenter.y),
+			ImVec2(dpadCenter.x, dpadCenter.y + 9.0f * uiScale),
+			ImVec2(dpadCenter.x - 9.0f * uiScale, dpadCenter.y),
+			IM_COL32(15, 23, 42, 235));
+
+		ImGui::SetCursorScreenPos(ImVec2(viewerMin.x + margin, viewerMax.y - 36.0f * uiScale));
+		ImGui::TextColored(ImVec4(0.392f, 0.455f, 0.545f, 1.0f), "Move: %.2f, %.2f   Speed: %.1f   Phase: %s",
+			moveVector.x, moveVector.y, _movementSpeed, _currentPhase.empty() ? "(none)" : _currentPhase.c_str());
+
+		if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+			_showExitPopup = true;
+			ImGui::OpenPopup("Exit Viewer");
+		}
+		ImGui::SetNextWindowPos(ImVec2(viewerMin.x + viewerSize.x * 0.5f, viewerMin.y + viewerSize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+		ImGui::SetNextWindowSize(ImVec2(380.0f * uiScale, 300.0f * uiScale), ImGuiCond_Always);
+		ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(1.00f, 1.00f, 1.00f, 0.98f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.886f, 0.910f, 0.941f, 1.00f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, panelRounding);
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * uiScale);
+		if (ImGui::BeginPopupModal("Exit Viewer", &_showExitPopup, ImGuiWindowFlags_NoResize)) {
+			ImGui::SetWindowFontScale(uiScale);
+			ImGui::TextUnformatted("Movement Speed");
+			ImGui::SetNextItemWidth(-1.0f);
+			ImGui::SliderFloat("##MovementSpeed", &_movementSpeed, 1.0f, 100.0f, "%.1f");
+			ImGui::Spacing();
+			if (ImGui::Button("Focus Loaded Model", ImVec2(-1.0f, 0.0f))) {
+				focusCameraOnBlockCenter();
+			}
+			if (ImGui::Button("Reset Phase", ImVec2(-1.0f, 0.0f))) {
+				selectRoom(401);
+			}
+			ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 48.0f * uiScale);
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.914f, 0.263f, 0.235f, 1.00f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.957f, 0.322f, 0.286f, 1.00f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.820f, 0.184f, 0.153f, 1.00f));
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+			if (ImGui::Button("Exit", ImVec2(-1.0f, 0.0f))) {
+				win.close();
+			}
+			ImGui::PopStyleColor(4);
+			ImGui::EndPopup();
+		}
+		ImGui::PopStyleVar(2);
+		ImGui::PopStyleColor(2);
+
+		ImGui::End();
+		ImGui::PopStyleVar();
+		ImGui::PopStyleColor();
+		return;
+
 		MultiViewBase::onGui(win);
 
 		if (_showCameraSpeedPannel) {
@@ -460,6 +849,110 @@ namespace sibr {
 	const RenderingSystem* ExtendedGaussianViewer::getRenderingSystem() const
 	{
 		return static_cast<const RenderingSystem*>(_subsystem[RENDERING_SYSTEM].get());
+	}
+
+	bool ExtendedGaussianViewer::importGaussianPath(const std::string& path)
+	{
+		if (path.empty()) {
+			return false;
+		}
+
+		boost::filesystem::path modelPath(path);
+		if (modelPath.extension().string() == ".ply" || modelPath.extension().string() == ".PLY") {
+			const boost::filesystem::path iterationDir = modelPath.parent_path();
+			const boost::filesystem::path cloudRoot = iterationDir.parent_path();
+			if (cloudRoot.filename().string() == "point_cloud") {
+				modelPath = cloudRoot.parent_path();
+			}
+			else if (cloudRoot.filename().string().find("scale_") == 0
+				&& cloudRoot.parent_path().filename().string() == "point_cloud_blocks") {
+				modelPath = cloudRoot.parent_path().parent_path();
+			}
+		}
+
+		auto field = GaussianLoader::load(modelPath.string());
+		if (!field) {
+			SIBR_WRG << "Failed to load Gaussian model from: " << modelPath.string() << std::endl;
+			return false;
+		}
+
+		const AssetId assetId = field->name;
+		const bool added = _resourceManager->addField(std::move(field));
+		if (!added && !_resourceManager->hasAsset(assetId)) {
+			return false;
+		}
+
+		_selectedField = assetId;
+		_loadedGaussianPath = modelPath.string();
+		GaussianInstance* instance = ensureInstanceForAsset(assetId);
+		if (!instance) {
+			return false;
+		}
+
+		if (!focusCameraOnInstanceCenter(*instance)) {
+			focusCameraOnAssetCenter(assetId);
+		}
+		return true;
+	}
+
+	GaussianInstance* ExtendedGaussianViewer::ensureInstanceForAsset(const AssetId& assetId)
+	{
+		if (!_scene || assetId.empty()) {
+			return nullptr;
+		}
+
+		for (const auto& instancePair : _scene->getInstances()) {
+			GaussianInstance* instance = instancePair.second.get();
+			if (instance && instance->getAssetId() == assetId) {
+				_selectedInstance = instance;
+				return instance;
+			}
+		}
+
+		std::string instanceName = assetId;
+		int suffix = 1;
+		while (_scene->getInstance(instanceName) != nullptr) {
+			instanceName = assetId + "_" + std::to_string(suffix++);
+		}
+
+		GaussianInstance* instance = _scene->createInstance(instanceName, assetId);
+		if (!instance) {
+			return nullptr;
+		}
+
+		_selectedInstance = instance;
+		if (_subsystem[RENDERING_SYSTEM]) {
+			_subsystem[RENDERING_SYSTEM]->onInstanceCreated(*instance);
+		}
+		return instance;
+	}
+
+	void ExtendedGaussianViewer::applyOverlayMove(float x, float y)
+	{
+		if (std::abs(x) < 0.01f && std::abs(y) < 0.01f) {
+			return;
+		}
+
+		auto viewIt = _ibrSubViews.find("Gaussian View");
+		if (viewIt == _ibrSubViews.end()) {
+			return;
+		}
+
+		InputCamera camera = viewIt->second.cam;
+		const float step = _movementSpeed * 0.05f * deltaTime();
+		const Vector3f pos = camera.position()
+			+ camera.right() * (x * step)
+			+ camera.dir() * (-y * step);
+		camera.setLookAt(pos, pos + camera.dir(), camera.up());
+		viewIt->second.cam = camera;
+
+		if (auto customHandler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler)) {
+			customHandler->fromCamera(camera, false, true);
+			customHandler->customCameraSpeed = _movementSpeed;
+		}
+		else if (auto interactiveHandler = std::dynamic_pointer_cast<InteractiveCameraHandler>(viewIt->second.handler)) {
+			interactiveHandler->fromCamera(camera, false, true);
+		}
 	}
 
 	bool ExtendedGaussianViewer::loadManifestFile(const std::string& path)

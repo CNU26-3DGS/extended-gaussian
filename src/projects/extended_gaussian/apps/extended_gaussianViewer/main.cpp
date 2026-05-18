@@ -36,11 +36,6 @@ int main(int ac, char** av)
 		sibr::Input::poll();
 		window.makeContextCurrent();
 
-		if (sibr::Input::global().key().isPressed(sibr::Key::Escape))
-		{
-			window.close();
-		}
-
 		viewer.onUpdate(sibr::Input::global());
 		viewer.onRender(window);
 

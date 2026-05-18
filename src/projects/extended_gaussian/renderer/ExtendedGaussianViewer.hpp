@@ -9,6 +9,8 @@
 #include <projects/extended_gaussian/renderer/resource/ResourceManager.hpp>
 #include <projects/extended_gaussian/renderer/subsystem/rendering_system/gpu_resource_manager/GPUResourceManager.hpp>
 
+#include <array>
+
 namespace sibr {
 	class RenderingSystem;
 
@@ -54,6 +56,9 @@ namespace sibr {
 		const RenderingSystem* getRenderingSystem() const;
 
 	private:
+		bool importGaussianPath(const std::string& path);
+		GaussianInstance* ensureInstanceForAsset(const AssetId& assetId);
+		void applyOverlayMove(float x, float y);
 		bool loadManifestFile(const std::string& path);
 		size_t createManifestInstances(bool onlyMissing = true);
 		bool canFocusBlockCenter() const;
@@ -84,17 +89,23 @@ namespace sibr {
 		bool _showScenePanel = false;
 		bool _showResourceBrowser = false;
 		bool _showCapturePanel = false;
-		bool _showCameraSpeedPannel = true;
+		bool _showCameraSpeedPannel = false;
+		bool _showExitPopup = false;
+		bool _minimapLarge = false;
+		float _movementSpeed = 20.0f;
+		int _currentRoom = 401;
+		std::array<bool, 12> _favoriteBookmarks = {};
 
 		GaussianInstance* _selectedInstance = nullptr;
 		std::string _selectedField;
+		std::string _loadedGaussianPath;
 
 		GaussianScene::UPtr _scene;
 		Subsystem::UPtr _subsystem[SubsystemType::SUBSYSTEM_LAST];
 		ResourceManager::UPtr _resourceManager;
 		ManifestStore _manifestStore;
 		std::string _loadedManifestPath;
-		std::string _currentPhase;
+		std::string _currentPhase = "401";
 		double _appTimeSec = 0.0;
 		uint64_t _frameIndex = 0;
 	};
