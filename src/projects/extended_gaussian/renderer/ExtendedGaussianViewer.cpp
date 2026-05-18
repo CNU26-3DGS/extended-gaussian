@@ -119,6 +119,7 @@ namespace sibr {
 		{
 			ImGui::GetStyle().WindowBorderSize = 0.0;
 		}
+		_showSubViewsGui = false;
 
 		_scene = std::make_unique<GaussianScene>();
 		_resourceManager = std::make_unique<ResourceManager>();
@@ -227,7 +228,7 @@ namespace sibr {
 		const ImGuiWindowFlags rootFlags =
 			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
 			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
-			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
+			ImGuiWindowFlags_NoSavedSettings;
 		ImGui::Begin("Extended Gaussian Overlay", nullptr, rootFlags);
 		ImGui::SetWindowFontScale(uiScale);
 
@@ -295,6 +296,17 @@ namespace sibr {
 			const ImVec2 titleSize = ImGui::CalcTextSize(dropTitle);
 			const ImVec2 center((viewerMin.x + viewerMax.x) * 0.5f, (viewerMin.y + viewerMax.y) * 0.5f);
 			drawList->AddText(ImVec2(center.x - titleSize.x * 0.5f, center.y - 20.0f * uiScale), mainTextColor, dropTitle);
+		}
+		else if (assetIds.empty()) {
+			const char* loadingTitle = "No Gaussian asset is active";
+			const ImVec2 titleSize = ImGui::CalcTextSize(loadingTitle);
+			const ImVec2 center((viewerMin.x + viewerMax.x) * 0.5f, (viewerMin.y + viewerMax.y) * 0.5f);
+			drawList->AddRectFilled(
+				ImVec2(center.x - titleSize.x * 0.5f - 18.0f * uiScale, center.y - 18.0f * uiScale),
+				ImVec2(center.x + titleSize.x * 0.5f + 18.0f * uiScale, center.y + 18.0f * uiScale),
+				IM_COL32(255, 255, 255, 220),
+				8.0f * uiScale);
+			drawList->AddText(ImVec2(center.x - titleSize.x * 0.5f, center.y - titleSize.y * 0.5f), mainTextColor, loadingTitle);
 		}
 
 		struct FavoriteRoom {
