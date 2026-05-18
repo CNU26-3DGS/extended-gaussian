@@ -3,6 +3,15 @@
 #include "RenderUtils.hpp"
 #include <projects/extended_gaussian/renderer/ExtendedGaussianViewer.hpp>
 
+#include <algorithm>
+
+namespace {
+	int clampShDegree(int degree)
+	{
+		return std::max(0, std::min(3, degree));
+	}
+}
+
 namespace sibr {
 	RenderingSystem::RenderingSystem()
 	{
@@ -68,6 +77,9 @@ namespace sibr {
 		owner.addCameraForView("Gaussian View", handler);
 
 		scene = std::make_unique<RenderGaussianScene>();
+		if (swapManager) {
+			swapManager->setMaxShDegree(max_sh_degree);
+		}
 	}
 
 	void RenderingSystem::onSystemRemoved(ExtendedGaussianViewer& owner)
@@ -172,7 +184,7 @@ namespace sibr {
 
 			const auto cpuField = resources->getCpuFieldShared(assetId);
 			if (cpuField) {
-				gpuManager.addField(assetId, cpuField.get());
+				gpuManager.addField(assetId, cpuField.get(), max_sh_degree);
 			}
 		}
 	}
@@ -200,6 +212,19 @@ namespace sibr {
 			return nullptr;
 		}
 		return &swapManager->stats();
+	}
+
+	void RenderingSystem::setMaxShDegree(int degree)
+	{
+		max_sh_degree = clampShDegree(degree);
+		if (swapManager) {
+			swapManager->setMaxShDegree(max_sh_degree);
+		}
+	}
+
+	int RenderingSystem::maxShDegree() const
+	{
+		return max_sh_degree;
 	}
 
 	RenderingSystem::~RenderingSystem()

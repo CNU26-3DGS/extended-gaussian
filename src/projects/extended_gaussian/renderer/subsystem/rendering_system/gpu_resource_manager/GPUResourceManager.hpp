@@ -37,7 +37,7 @@ namespace sibr {
 
 		bool has(const AssetId& assetId) const;
 		GpuState state(const AssetId& assetId) const;
-		bool addField(const std::string& assetId, const GaussianField* field);
+		bool addField(const std::string& assetId, const GaussianField* field, int effective_sh_degree = 3);
 		bool beginUpload(const AssetId& assetId);
 		void completeUpload(const AssetId& assetId, GPUGaussianField::Ptr field);
 		void failUpload(const AssetId& assetId);

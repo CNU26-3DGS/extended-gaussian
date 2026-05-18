@@ -27,7 +27,7 @@ namespace sibr {
         return itr->second.state;
     }
 
-    bool GPUResourceManager::addField(const std::string& assetId, const GaussianField* field)
+    bool GPUResourceManager::addField(const std::string& assetId, const GaussianField* field, int effective_sh_degree)
     {
         if (!field || assetId.empty()) {
             return false;
@@ -36,7 +36,7 @@ namespace sibr {
             return false;
         }
 
-        completeUpload(assetId, std::make_shared<GPUGaussianField>(assetId, field));
+        completeUpload(assetId, std::make_shared<GPUGaussianField>(assetId, field, effective_sh_degree));
         return true;
     }
 

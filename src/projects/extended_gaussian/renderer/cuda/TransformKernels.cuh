@@ -12,3 +12,8 @@ void launchTransformKernel(
     const float3* l_pos, const float4* l_rot, const float3* l_scale,
     float3* w_pos, float4* w_rot, float3* w_scale,
     Matrix4x4 worldMat, float4 instRot, float instScale);
+
+void launchCopySHsKernel(
+    int blocks, int threads, int count, int offset,
+    const float* src_shs, int src_coeffs,
+    float* dst_shs, int dst_coeffs);

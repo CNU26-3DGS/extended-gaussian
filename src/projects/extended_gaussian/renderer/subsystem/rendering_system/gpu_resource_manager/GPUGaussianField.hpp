@@ -13,11 +13,14 @@ namespace sibr {
 		SIBR_CLASS_PTR(GPUGaussianField);
 
 		GPUGaussianField(const std::string& p_assetId, const GaussianField* p_origin);
+		GPUGaussianField(const std::string& p_assetId, const GaussianField* p_origin, int effective_sh_degree);
 
 		GPUGaussianField(const GPUGaussianField&) = delete;
 		GPUGaussianField& operator=(const GPUGaussianField&) = delete;
 
 		~GPUGaussianField();
+
+		static size_t estimateBytes(const GaussianField* p_origin, int effective_sh_degree);
 
 		std::string asset_id;
 		int count;

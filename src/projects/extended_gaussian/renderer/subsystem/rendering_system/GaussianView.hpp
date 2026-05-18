@@ -48,6 +48,8 @@ namespace sibr {
 		bool resizeWorldBuffersIfNeeded(size_t count);
 		void releaseScratchBuffers();
 		void releaseWorldBuffers();
+		int renderShDegree() const;
+		size_t renderShCoefficientCount() const;
 		void AppendGaussianToWorld(
 			const GPUGaussianField* source,
 			size_t offset,
@@ -63,7 +65,7 @@ namespace sibr {
 			float scale,
 			float* w_pos_ptr, float* w_rot_ptr, float* w_scale_ptr
 		);
-		void appendSHsToWorld(const float* src_shs, int count, int offset, int sh_degree);
+		void appendSHsToWorld(const float* src_shs, int count, int offset, int src_sh_degree, int dst_sh_degree);
 		void appendOpacitiesToWorld(const float* src_opacities, int count, int offset);
 
 		const RenderingSystem* owner;
@@ -82,6 +84,7 @@ namespace sibr {
 
 		size_t current_world_gausians_count = 0;
 		size_t max_gaussians_count = 0;
+		int current_world_sh_degree = 3;
 		float* world_pos_cuda = nullptr;
 		float* world_rot_cuda = nullptr;
 		float* world_scale_cuda = nullptr;

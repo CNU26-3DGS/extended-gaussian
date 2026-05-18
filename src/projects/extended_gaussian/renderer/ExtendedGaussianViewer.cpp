@@ -14,6 +14,13 @@
 #include <sstream>
 
 namespace sibr {
+	namespace {
+		int clampShDegree(int degree)
+		{
+			return std::max(0, std::min(3, degree));
+		}
+	}
+
 	// SIBR 핸들러 상속
 	class CustomCameraHandler : public sibr::InteractiveCameraHandler {
 	protected:
@@ -117,9 +124,17 @@ namespace sibr {
 			ImGui::GetStyle().WindowBorderSize = 0.0;
 		}
 
+		_maxShDegree = clampShDegree(getCommandLineArgs().get<int>("max-sh-degree", 3));
+		CommandLineArgs::getGlobal().registerCommand(
+			"max-sh-degree",
+			"maximum spherical harmonics degree uploaded to GPU assets (0-3)",
+			"3");
+
 		_scene = std::make_unique<GaussianScene>();
 		_resourceManager = std::make_unique<ResourceManager>();
-		_subsystem[RENDERING_SYSTEM] = std::make_unique<RenderingSystem>();
+		auto renderingSystem = std::make_unique<RenderingSystem>();
+		renderingSystem->setMaxShDegree(_maxShDegree);
+		_subsystem[RENDERING_SYSTEM] = std::move(renderingSystem);
 		_subsystem[RENDERING_SYSTEM]->onSystemAdded(*this);
 
 		const std::string manifestPath = getCommandLineArgs().get<std::string>("manifest", "");
@@ -832,6 +847,14 @@ namespace sibr {
 		return stream.str();
 	}
 
+	void ExtendedGaussianViewer::setMaxShDegree(int degree)
+	{
+		_maxShDegree = clampShDegree(degree);
+		if (RenderingSystem* renderingSystem = getRenderingSystem()) {
+			renderingSystem->setMaxShDegree(_maxShDegree);
+		}
+	}
+
 	void ExtendedGaussianViewer::onShowScenePanel(Window& win) {
 		float sideWidth = 350.0f;
 		ImGui::SetNextWindowPos(ImVec2(win.size().x() - sideWidth, 20.0f), ImGuiCond_FirstUseEver);
@@ -1009,7 +1032,18 @@ namespace sibr {
 						ImGui::PopTextWrapPos();
 
 						ImGui::BulletText("Points: %u", currentField->count);
-						ImGui::BulletText("SH Degree: %d", currentField->sh_degree);
+						ImGui::BulletText("CPU Source SH Degree: %d", currentField->sh_degree);
+						const auto gpuField = GPUResourceManager::getInstance().getField(currentAssetId);
+						if (gpuField) {
+							ImGui::BulletText("GPU Uploaded SH Degree: %d", gpuField->sh_degree);
+							ImGui::BulletText("GPU Asset Bytes: %s MB", formatMegabytes(gpuField->bytes).c_str());
+							if (gpuField->sh_degree != _maxShDegree) {
+								ImGui::TextDisabled("Resident GPU asset keeps its upload-time SH setting.");
+							}
+						}
+						else {
+							ImGui::BulletText("GPU Uploaded SH Degree: not resident");
+						}
 					}
 				}
 
@@ -1056,6 +1090,25 @@ namespace sibr {
 					}
 				}
 			}
+			ImGui::SameLine();
+			const char* shDegreeLabels[] = { "SH 0", "SH 1", "SH 2", "SH 3" };
+			int selectedShDegree = clampShDegree(_maxShDegree);
+			ImGui::PushItemWidth(100.0f);
+			if (ImGui::BeginCombo("Max SH", shDegreeLabels[selectedShDegree])) {
+				for (int degree = 0; degree <= 3; ++degree) {
+					const bool selected = selectedShDegree == degree;
+					if (ImGui::Selectable(shDegreeLabels[degree], selected)) {
+						setMaxShDegree(degree);
+						selectedShDegree = degree;
+					}
+					if (selected) {
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::PopItemWidth();
+			ImGui::TextDisabled("Max SH applies to future GPU uploads. Resident GPU assets are not reuploaded automatically.");
 			ImGui::Separator();
 
 			ImGui::TextWrapped("Manifest: %s", _loadedManifestPath.empty() ? "(none)" : _loadedManifestPath.c_str());

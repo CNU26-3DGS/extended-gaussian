@@ -25,6 +25,10 @@ int assetPriority(const sibr::ManifestStore *manifest,
   return descriptor ? descriptor->priority : 0;
 }
 
+int clampShDegree(int degree) {
+  return std::max(0, std::min(3, degree));
+}
+
 } // namespace
 
 namespace sibr {
@@ -83,6 +87,10 @@ void SwapManager::tick(const ViewerContext &context) {
 
 void SwapManager::setSkippedInstancesLastFrame(size_t skippedInstances) {
   stats_.skipped_instances_last_frame = skippedInstances;
+}
+
+void SwapManager::setMaxShDegree(int degree) {
+  maxShDegree_ = clampShDegree(degree);
 }
 
 const SwapManager::Stats &SwapManager::stats() const { return stats_; }
@@ -212,12 +220,8 @@ void SwapManager::scheduleGpuUploads(const PolicyResult &result) {
       continue;
     }
 
-    const AssetDescriptor *descriptor = manifestDescriptor(manifest_, id);
     const size_t estimatedBytes =
-        descriptor ? descriptor->estimated_gpu_bytes : 0;
-    // If size is unknown (0), skip per-frame budget enforcement but still
-    // allow the upload. This is safe only for small manifests; if assets
-    // lack estimated_gpu_bytes entries, VRAM pressure is uncontrolled.
+        GPUGaussianField::estimateBytes(cpuField.get(), maxShDegree_);
     const bool sizeKnown = estimatedBytes > 0;
 
     if (sizeKnown && uploadBudget > 0 &&
@@ -241,7 +245,8 @@ void SwapManager::scheduleGpuUploads(const PolicyResult &result) {
       continue;
     }
 
-    auto gpuField = std::make_shared<GPUGaussianField>(id, cpuField.get());
+    auto gpuField =
+        std::make_shared<GPUGaussianField>(id, cpuField.get(), maxShDegree_);
     gpuManager_.completeUpload(id, gpuField);
     uploadedBytes += gpuField->bytes;
     residentBytes += gpuField->bytes;
