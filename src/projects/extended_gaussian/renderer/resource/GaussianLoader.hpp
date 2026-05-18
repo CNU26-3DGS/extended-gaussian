@@ -88,7 +88,7 @@ namespace sibr {
         for (uint32_t i = 0; i < count; i++) {
             maxx = maxx.cwiseMax(points[i].pos);
             minn = minn.cwiseMin(points[i].pos);
-            positionSum += points[i].pos.cast<double>();
+            positionSum += points[i].pos.template cast<double>();
         }
         if (count > 0) {
             out_field.min_edges = minn;
@@ -140,7 +140,7 @@ namespace sibr {
                 }
                 focusMin = focusMin.cwiseMin(points[i].pos);
                 focusMax = focusMax.cwiseMax(points[i].pos);
-                focusSum += points[i].pos.cast<double>();
+                focusSum += points[i].pos.template cast<double>();
                 ++keptCount;
             }
 
