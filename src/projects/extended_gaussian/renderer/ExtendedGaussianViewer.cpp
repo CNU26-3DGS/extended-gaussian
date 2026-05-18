@@ -225,7 +225,8 @@ namespace sibr {
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, hasContent ? 0.0f : 1.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 		const ImGuiWindowFlags rootFlags =
-			ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
 			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
 		ImGui::Begin("Extended Gaussian Overlay", nullptr, rootFlags);
 		ImGui::SetWindowFontScale(uiScale);
@@ -394,7 +395,7 @@ namespace sibr {
 			const ImGuiIO& io = ImGui::GetIO();
 			const bool hovered = io.MousePos.x >= a.x && io.MousePos.x <= b.x && io.MousePos.y >= a.y && io.MousePos.y <= b.y
 				&& io.MousePos.x >= mapMin.x && io.MousePos.x <= mapMax.x && io.MousePos.y >= mapMin.y && io.MousePos.y <= mapMax.y;
-			if (selectable && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (selectable && hovered && ImGui::IsMouseClicked(0)) {
 				selectRoom(roomId);
 			}
 			const bool active = selectable && roomId == _currentRoom;
@@ -412,7 +413,7 @@ namespace sibr {
 			(((io.MousePos.x >= planMin.x + 0.0f * sx && io.MousePos.x <= planMin.x + 560.0f * sx) && (io.MousePos.y >= planMin.y + 58.0f * sy && io.MousePos.y <= planMin.y + 88.0f * sy)) ||
 			((io.MousePos.x >= planMin.x + 286.0f * sx && io.MousePos.x <= planMin.x + 350.0f * sx) && (io.MousePos.y >= planMin.y + 0.0f * sy && io.MousePos.y <= planMin.y + 88.0f * sy)) ||
 			((io.MousePos.x >= planMin.x + 350.0f * sx && io.MousePos.x <= planMin.x + 560.0f * sx) && (io.MousePos.y >= planMin.y + 45.0f * sy && io.MousePos.y <= planMin.y + 88.0f * sy)));
-		if (corridorHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		if (corridorHovered && ImGui::IsMouseClicked(0)) {
 			selectRoom(0);
 		}
 		const bool corridorActive = _currentRoom == 0;
@@ -429,7 +430,7 @@ namespace sibr {
 			ImVec2(planMin.x + 560.0f * sx, planMin.y + 88.0f * sy),
 			ImVec2(planMin.x + 0.0f * sx, planMin.y + 88.0f * sy),
 		};
-		drawList->AddPolyline(corridorOutline, IM_ARRAYSIZE(corridorOutline), corridorActive ? accentColor : (corridorHovered ? accentColor : IM_COL32(100, 116, 139, 210)), ImDrawFlags_Closed, corridorActive ? 2.0f * uiScale : 1.0f * uiScale);
+		drawList->AddPolyline(corridorOutline, IM_ARRAYSIZE(corridorOutline), corridorActive ? accentColor : (corridorHovered ? accentColor : IM_COL32(100, 116, 139, 210)), true, corridorActive ? 2.0f * uiScale : 1.0f * uiScale);
 		drawSpace(0, 0, 84, 58, "401", 401, true);
 		drawSpace(84, 0, 70, 58, "403", 403, true);
 		drawSpace(154, 0, 70, 58, "404", 404, true);
@@ -454,16 +455,17 @@ namespace sibr {
 		}
 
 		ImVec2 moveVector(0.0f, 0.0f);
-		if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) moveVector.x -= 1.0f;
-		if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) moveVector.x += 1.0f;
-		if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) moveVector.y -= 1.0f;
-		if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) moveVector.y += 1.0f;
+		const Input& globalInput = Input::global();
+		if (globalInput.key().isActivated(Key::A) || globalInput.key().isActivated(Key::Left)) moveVector.x -= 1.0f;
+		if (globalInput.key().isActivated(Key::D) || globalInput.key().isActivated(Key::Right)) moveVector.x += 1.0f;
+		if (globalInput.key().isActivated(Key::W) || globalInput.key().isActivated(Key::Up)) moveVector.y -= 1.0f;
+		if (globalInput.key().isActivated(Key::S) || globalInput.key().isActivated(Key::Down)) moveVector.y += 1.0f;
 
 		const ImVec2 dpadCenter(viewerMin.x + 142.0f * uiScale, viewerMax.y - 138.0f * uiScale);
 		const float dpadRadius = 82.0f * uiScale;
 		const float dpadDx = io.MousePos.x - dpadCenter.x;
 		const float dpadDy = io.MousePos.y - dpadCenter.y;
-		if ((dpadDx * dpadDx + dpadDy * dpadDy) <= dpadRadius * dpadRadius && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+		if ((dpadDx * dpadDx + dpadDy * dpadDy) <= dpadRadius * dpadRadius && ImGui::IsMouseDown(0)) {
 			moveVector.x = dpadDx / dpadRadius;
 			moveVector.y = dpadDy / dpadRadius;
 		}
@@ -516,7 +518,7 @@ namespace sibr {
 			}
 
 			drawList->AddConvexPolyFilled(points, IM_ARRAYSIZE(points), active ? accentSoftColor : IM_COL32(255, 255, 255, 235));
-			drawList->AddPolyline(points, IM_ARRAYSIZE(points), active ? accentColor : borderColor, ImDrawFlags_Closed, active ? 1.8f * uiScale : 1.0f * uiScale);
+			drawList->AddPolyline(points, IM_ARRAYSIZE(points), active ? accentColor : borderColor, true, active ? 1.8f * uiScale : 1.0f * uiScale);
 			const ImVec2 textSize = ImGui::CalcTextSize(label);
 			drawList->AddText(ImVec2(labelCenter.x - textSize.x * 0.5f, labelCenter.y - textSize.y * 0.5f), mainTextColor, label);
 		};
@@ -535,7 +537,7 @@ namespace sibr {
 		ImGui::TextColored(ImVec4(0.392f, 0.455f, 0.545f, 1.0f), "Move: %.2f, %.2f   Speed: %.1f   Phase: %s",
 			moveVector.x, moveVector.y, _movementSpeed, _currentPhase.empty() ? "(none)" : _currentPhase.c_str());
 
-		if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+		if (globalInput.key().isPressed(Key::Escape)) {
 			_showExitPopup = true;
 			ImGui::OpenPopup("Exit Viewer");
 		}
@@ -548,8 +550,9 @@ namespace sibr {
 		if (ImGui::BeginPopupModal("Exit Viewer", &_showExitPopup, ImGuiWindowFlags_NoResize)) {
 			ImGui::SetWindowFontScale(uiScale);
 			ImGui::TextUnformatted("Movement Speed");
-			ImGui::SetNextItemWidth(-1.0f);
+			ImGui::PushItemWidth(-1.0f);
 			ImGui::SliderFloat("##MovementSpeed", &_movementSpeed, 1.0f, 100.0f, "%.1f");
+			ImGui::PopItemWidth();
 			ImGui::Spacing();
 			if (ImGui::Button("Focus Loaded Model", ImVec2(-1.0f, 0.0f))) {
 				focusCameraOnBlockCenter();
