@@ -90,8 +90,10 @@ namespace sibr {
 
 		void onShowUserMinimap(sibr::Window& win);
 		void onShowUserInstanceList(sibr::Window& win);
+		void onShowUserNavigationControl(sibr::Window& win);
 		std::vector<UserMapBlock> collectUserMapBlocks() const;
 		bool focusCameraOnUserBlock(const std::string& id);
+		void setUserCameraMoveVector(const Vector2f& moveVector);
 
 		void onShowScenePanel(sibr::Window& win);
 		void onShowResourceBrowser(sibr::Window& win);

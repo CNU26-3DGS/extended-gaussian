@@ -43,6 +43,15 @@ namespace sibr {
 
 		float customCameraSpeed = 10.0f;
 		float customRotSpeed = 10.0f;
+		sibr::Vector2f uiMoveVector = sibr::Vector2f(0.0f, 0.0f);
+
+		void setUiMoveVector(const sibr::Vector2f& moveVector) {
+			uiMoveVector = moveVector;
+			const float length = uiMoveVector.norm();
+			if (length > 1.0f) {
+				uiMoveVector /= length;
+			}
+		}
 
 		void update(const sibr::Input& input, const float deltaTime, const sibr::Viewport& viewport) override {
 
@@ -66,9 +75,12 @@ namespace sibr {
 			if (input.key().isActivated(sibr::Key::D)) pos += _myCam.right() * currentMoveSpeed;
 			if (input.key().isActivated(sibr::Key::E)) pos += _worldUp * currentMoveSpeed;
 			if (input.key().isActivated(sibr::Key::Q)) pos -= _worldUp * currentMoveSpeed;
+			pos += _myCam.right() * (uiMoveVector.x() * currentMoveSpeed);
+			pos += _myCam.dir() * (uiMoveVector.y() * currentMoveSpeed);
 
 			// 마우스 이동
-			if (input.mouseButton().isActivated(sibr::Mouse::Left)) {
+			const bool usingUiMove = uiMoveVector.squaredNorm() > 0.0001f;
+			if (!usingUiMove && input.mouseButton().isActivated(sibr::Mouse::Left)) {
 				float slideSens = (currentMoveSpeed * 0.01f); // 필요시 float 조절
 				sibr::Vector3f right = _myCam.right();
 				sibr::Vector3f up = _myCam.up();
@@ -77,7 +89,7 @@ namespace sibr {
 				_myCam.setLookAt(pos, pos + _myCam.dir(), _myCam.up());
 			}
 			// 마우스 회전
-			else if (input.mouseButton().isActivated(sibr::Mouse::Right)) {
+			else if (!usingUiMove && input.mouseButton().isActivated(sibr::Mouse::Right)) {
 				sibr::Vector3f forward = _myCam.dir();
 				sibr::Vector3f right = _myCam.right();
 				sibr::Vector3f up = _myCam.up();
@@ -210,6 +222,10 @@ namespace sibr {
 		if (_uiMode == UIMode::User && _showGUI) {
 			onShowUserMinimap(win);
 			onShowUserInstanceList(win);
+			onShowUserNavigationControl(win);
+		}
+		else if (_uiMode == UIMode::User) {
+			setUserCameraMoveVector(Vector2f(0.0f, 0.0f));
 		}
 		++_frameIndex;
 
@@ -1237,6 +1253,108 @@ namespace sibr {
 		ImGui::End();
 		ImGui::PopStyleColor(2);
 		ImGui::PopStyleVar(2);
+	}
+
+	void ExtendedGaussianViewer::setUserCameraMoveVector(const Vector2f& moveVector)
+	{
+		const auto viewIt = _ibrSubViews.find("Gaussian View");
+		if (viewIt == _ibrSubViews.end()) {
+			return;
+		}
+
+		auto customHandler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler);
+		if (customHandler) {
+			customHandler->setUiMoveVector(moveVector);
+		}
+	}
+
+	void ExtendedGaussianViewer::onShowUserNavigationControl(Window& win)
+	{
+		const Vector2f winSize = win.size().cast<float>();
+		const float scale = std::max(1.0f, ImGui::GetIO().FontGlobalScale);
+		const float panelSize = 178.0f * scale;
+		const ImVec2 panelPos(24.0f * scale, std::max(24.0f * scale, winSize.y() - panelSize - 28.0f * scale));
+
+		ImGui::SetNextWindowPos(panelPos, ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(panelSize, panelSize), ImGuiCond_Always);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, panelSize * 0.5f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06f, 0.09f, 0.16f, 0.82f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.06f, 0.65f, 0.91f, 0.95f));
+
+		const ImGuiWindowFlags flags =
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoScrollbar |
+			ImGuiWindowFlags_NoSavedSettings;
+
+		Vector2f moveVector(0.0f, 0.0f);
+		if (ImGui::Begin("User Navigation Control", nullptr, flags)) {
+			const ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+			const ImVec2 canvasSize(panelSize, panelSize);
+			ImGui::InvisibleButton("##UserNavigationDpad", canvasSize);
+			const bool active = ImGui::IsItemActive() && ImGui::IsMouseDown(0);
+			const ImVec2 mousePos = ImGui::GetIO().MousePos;
+			const ImVec2 center(canvasPos.x + panelSize * 0.5f, canvasPos.y + panelSize * 0.5f);
+			const float radius = panelSize * 0.42f;
+
+			if (active) {
+				const float dx = (mousePos.x - center.x) / radius;
+				const float dy = (mousePos.y - center.y) / radius;
+				moveVector.x() = std::max(-1.0f, std::min(1.0f, dx));
+				moveVector.y() = std::max(-1.0f, std::min(1.0f, -dy));
+				const float length = moveVector.norm();
+				if (length > 1.0f) {
+					moveVector /= length;
+				}
+				if (moveVector.norm() < 0.15f) {
+					moveVector = Vector2f(0.0f, 0.0f);
+				}
+			}
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddCircleFilled(center, radius, IM_COL32(15, 23, 42, 218), 64);
+			drawList->AddCircle(center, radius, IM_COL32(14, 165, 233, 255), 64, 2.0f * scale);
+
+			const float keyWidth = 38.0f * scale;
+			const float keyHeight = 34.0f * scale;
+			const float keyOffset = 43.0f * scale;
+			const float keyRounding = 3.0f * scale;
+			const ImU32 keyFill = IM_COL32(255, 255, 255, 235);
+			const ImU32 keyActiveFill = IM_COL32(219, 242, 255, 245);
+			const ImU32 keyBorder = IM_COL32(226, 232, 240, 245);
+			const ImU32 keyActiveBorder = IM_COL32(56, 189, 248, 255);
+			const ImU32 keyText = IM_COL32(15, 23, 42, 255);
+
+			auto drawKey = [&](const char* label, const ImVec2& keyCenter, bool keyActive) {
+				const ImVec2 a(keyCenter.x - keyWidth * 0.5f, keyCenter.y - keyHeight * 0.5f);
+				const ImVec2 b(keyCenter.x + keyWidth * 0.5f, keyCenter.y + keyHeight * 0.5f);
+				drawList->AddRectFilled(a, b, keyActive ? keyActiveFill : keyFill, keyRounding);
+				drawList->AddRect(a, b, keyActive ? keyActiveBorder : keyBorder, keyRounding, 0, keyActive ? 1.8f * scale : 1.0f * scale);
+				const ImVec2 textSize = ImGui::CalcTextSize(label);
+				drawList->AddText(ImVec2(keyCenter.x - textSize.x * 0.5f, keyCenter.y - textSize.y * 0.5f), keyText, label);
+			};
+
+			drawKey("W", ImVec2(center.x, center.y - keyOffset), moveVector.y() > 0.25f);
+			drawKey("D", ImVec2(center.x + keyOffset, center.y), moveVector.x() > 0.25f);
+			drawKey("S", ImVec2(center.x, center.y + keyOffset), moveVector.y() < -0.25f);
+			drawKey("A", ImVec2(center.x - keyOffset, center.y), moveVector.x() < -0.25f);
+
+			const float gap = 9.0f * scale;
+			drawList->AddQuadFilled(
+				ImVec2(center.x, center.y - gap),
+				ImVec2(center.x + gap, center.y),
+				ImVec2(center.x, center.y + gap),
+				ImVec2(center.x - gap, center.y),
+				IM_COL32(15, 23, 42, 235));
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);
+		ImGui::PopStyleVar(2);
+
+		setUserCameraMoveVector(moveVector);
 	}
 
 	void ExtendedGaussianViewer::onShowScenePanel(Window& win) {
