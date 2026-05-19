@@ -39,6 +39,7 @@ namespace sibr {
 
 		void tick(const ViewerContext& context);
 		void setSkippedInstancesLastFrame(size_t skippedInstances);
+		void setMaxShDegree(int degree);
 
 		const Stats& stats() const;
 
@@ -60,6 +61,7 @@ namespace sibr {
 		const ManifestStore* manifest_ = nullptr;
 		ResourceManager& registry_;
 		GPUResourceManager& gpuManager_;
+		int maxShDegree_ = 3;
 		SwapPolicy policy_;
 		AssetLoadWorker worker_;
 		std::unordered_map<AssetId, double> evictableSince_;

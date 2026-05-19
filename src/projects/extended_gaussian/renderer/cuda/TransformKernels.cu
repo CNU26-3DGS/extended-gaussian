@@ -40,6 +40,29 @@ __global__ void transformGaussiansKernel(
 
 }
 
+__global__ void copySHsKernel(
+    int count, int offset,
+    const float* src_shs, int src_coeffs,
+    float* dst_shs, int dst_coeffs
+) {
+    const int dst_floats_per_gaussian = dst_coeffs * 3;
+    const int src_floats_per_gaussian = src_coeffs * 3;
+    const int total = count * dst_floats_per_gaussian;
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+
+    const int gaussian_idx = idx / dst_floats_per_gaussian;
+    const int local_float_idx = idx - gaussian_idx * dst_floats_per_gaussian;
+
+    float value = 0.0f;
+    if (local_float_idx < src_floats_per_gaussian) {
+        value = src_shs[gaussian_idx * src_floats_per_gaussian + local_float_idx];
+    }
+
+    dst_shs[(gaussian_idx + offset) * dst_floats_per_gaussian + local_float_idx] = value;
+}
+
 void launchTransformKernel(
     int blocks, int threads, int count, int offset,
     const float3* l_pos, const float4* l_rot, const float3* l_scale,
@@ -48,4 +71,17 @@ void launchTransformKernel(
 {
     transformGaussiansKernel << <blocks, threads >> > (
         count, offset, l_pos, l_rot, l_scale, w_pos, w_rot, w_scale, worldMat, instRot, instScale);
+}
+
+void launchCopySHsKernel(
+    int blocks, int threads, int count, int offset,
+    const float* src_shs, int src_coeffs,
+    float* dst_shs, int dst_coeffs)
+{
+    if (count <= 0 || src_coeffs <= 0 || dst_coeffs <= 0) {
+        return;
+    }
+
+    copySHsKernel << <blocks, threads >> > (
+        count, offset, src_shs, src_coeffs, dst_shs, dst_coeffs);
 }

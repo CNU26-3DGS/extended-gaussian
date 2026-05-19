@@ -70,6 +70,7 @@ namespace sibr {
 		static const char* cpuStateLabel(CpuState state);
 		static const char* gpuStateLabel(GpuState state);
 		static std::string formatMegabytes(size_t bytes);
+		void setMaxShDegree(int degree);
 
 		void onShowScenePanel(sibr::Window& win);
 		void onShowResourceBrowser(sibr::Window& win);
@@ -95,6 +96,8 @@ namespace sibr {
 		ManifestStore _manifestStore;
 		std::string _loadedManifestPath;
 		std::string _currentPhase;
+		std::string _resourceBrowserStatus;
+		int _maxShDegree = 1;
 		double _appTimeSec = 0.0;
 		uint64_t _frameIndex = 0;
 	};

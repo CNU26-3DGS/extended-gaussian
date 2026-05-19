@@ -1,4 +1,6 @@
 set(CNU_PROJECT "extended_gaussian")
+project(${CNU_PROJECT} LANGUAGES CXX CUDA)
+
 set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "12.0")
     set(DEFAULT_ARCHS "75-real;86-real;89-real")
@@ -19,12 +21,36 @@ set(EXTENDED_GAUSSIAN_EFFECTIVE_CUDA_ARCHITECTURES "${EXTENDED_GAUSSIAN_CUDA_ARC
 set(CMAKE_CUDA_ARCHITECTURES "${EXTENDED_GAUSSIAN_EFFECTIVE_CUDA_ARCHITECTURES}")
 message(STATUS "extended_gaussian CUDA architectures: ${EXTENDED_GAUSSIAN_EFFECTIVE_CUDA_ARCHITECTURES}")
 
-project(${CNU_PROJECT} LANGUAGES CXX CUDA)
-
 sibr_gitlibrary(TARGET CudaRasterizer
     GIT_REPOSITORY  "https://github.com/graphdeco-inria/diff-gaussian-rasterization.git"
     GIT_TAG         "255c532d5fd0c3d83afec0e8e49574b65ae381bd"
 )
+
+set(CUDA_RASTERIZER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/extlibs/CudaRasterizer/CudaRasterizer")
+set(CUDA_RASTERIZER_MAX_SPLAT_PATCH
+    "${CMAKE_CURRENT_SOURCE_DIR}/patches/cuda_rasterizer_max_splat_radius.patch"
+)
+
+if(EXISTS "${CUDA_RASTERIZER_SOURCE_DIR}/cuda_rasterizer/rasterizer.h")
+    file(READ "${CUDA_RASTERIZER_SOURCE_DIR}/cuda_rasterizer/rasterizer.h" CUDA_RASTERIZER_HEADER)
+    if(NOT CUDA_RASTERIZER_HEADER MATCHES "max_splat_radius")
+        find_package(Git REQUIRED)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" apply --ignore-whitespace "${CUDA_RASTERIZER_MAX_SPLAT_PATCH}"
+            WORKING_DIRECTORY "${CUDA_RASTERIZER_SOURCE_DIR}"
+            RESULT_VARIABLE CUDA_RASTERIZER_PATCH_RESULT
+            OUTPUT_VARIABLE CUDA_RASTERIZER_PATCH_STDOUT
+            ERROR_VARIABLE CUDA_RASTERIZER_PATCH_STDERR
+        )
+        if(NOT CUDA_RASTERIZER_PATCH_RESULT EQUAL 0)
+            message(FATAL_ERROR
+                "Failed to apply CudaRasterizer max splat radius patch.\n"
+                "${CUDA_RASTERIZER_PATCH_STDOUT}\n${CUDA_RASTERIZER_PATCH_STDERR}"
+            )
+        endif()
+        message(STATUS "Applied CudaRasterizer max splat radius patch.")
+    endif()
+endif()
 
 if(TARGET CudaRasterizer)
     # CUDA 12.8 does not expose fixed-width integer types transitively through

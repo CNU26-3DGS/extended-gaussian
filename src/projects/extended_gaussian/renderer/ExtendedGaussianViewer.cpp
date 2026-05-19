@@ -14,6 +14,13 @@
 #include <sstream>
 
 namespace sibr {
+	namespace {
+		int clampShDegree(int degree)
+		{
+			return std::max(0, std::min(3, degree));
+		}
+	}
+
 	// SIBR 핸들러 상속
 	class CustomCameraHandler : public sibr::InteractiveCameraHandler {
 	protected:
@@ -117,9 +124,17 @@ namespace sibr {
 			ImGui::GetStyle().WindowBorderSize = 0.0;
 		}
 
+		_maxShDegree = clampShDegree(getCommandLineArgs().get<int>("max-sh-degree", 1));
+		CommandLineArgs::getGlobal().registerCommand(
+			"max-sh-degree",
+			"maximum spherical harmonics degree uploaded to GPU assets (0-3)",
+			"1");
+
 		_scene = std::make_unique<GaussianScene>();
 		_resourceManager = std::make_unique<ResourceManager>();
-		_subsystem[RENDERING_SYSTEM] = std::make_unique<RenderingSystem>();
+		auto renderingSystem = std::make_unique<RenderingSystem>();
+		renderingSystem->setMaxShDegree(_maxShDegree);
+		_subsystem[RENDERING_SYSTEM] = std::move(renderingSystem);
 		_subsystem[RENDERING_SYSTEM]->onSystemAdded(*this);
 
 		const std::string manifestPath = getCommandLineArgs().get<std::string>("manifest", "");
@@ -465,6 +480,11 @@ namespace sibr {
 	bool ExtendedGaussianViewer::loadManifestFile(const std::string& path)
 	{
 		if (!_manifestStore.load(path)) {
+			_loadedManifestPath.clear();
+			if (auto* renderingSystem = getRenderingSystem()) {
+				renderingSystem->setManifest(nullptr);
+			}
+			_resourceBrowserStatus = "Manifest load failed. Check that the JSON exists and contains valid model_dir paths.";
 			return false;
 		}
 
@@ -487,6 +507,7 @@ namespace sibr {
 		}
 
 		focusCameraOnManifestBounds();
+		_resourceBrowserStatus = "Manifest loaded: " + std::to_string(_manifestStore.assets().size()) + " asset(s).";
 		return true;
 	}
 
@@ -832,6 +853,14 @@ namespace sibr {
 		return stream.str();
 	}
 
+	void ExtendedGaussianViewer::setMaxShDegree(int degree)
+	{
+		_maxShDegree = clampShDegree(degree);
+		if (RenderingSystem* renderingSystem = getRenderingSystem()) {
+			renderingSystem->setMaxShDegree(_maxShDegree);
+		}
+	}
+
 	void ExtendedGaussianViewer::onShowScenePanel(Window& win) {
 		float sideWidth = 350.0f;
 		ImGui::SetNextWindowPos(ImVec2(win.size().x() - sideWidth, 20.0f), ImGuiCond_FirstUseEver);
@@ -1009,7 +1038,18 @@ namespace sibr {
 						ImGui::PopTextWrapPos();
 
 						ImGui::BulletText("Points: %u", currentField->count);
-						ImGui::BulletText("SH Degree: %d", currentField->sh_degree);
+						ImGui::BulletText("CPU Source SH Degree: %d", currentField->sh_degree);
+						const auto gpuField = GPUResourceManager::getInstance().getField(currentAssetId);
+						if (gpuField) {
+							ImGui::BulletText("GPU Uploaded SH Degree: %d", gpuField->sh_degree);
+							ImGui::BulletText("GPU Asset Bytes: %s MB", formatMegabytes(gpuField->bytes).c_str());
+							if (gpuField->sh_degree != _maxShDegree) {
+								ImGui::TextDisabled("Resident GPU asset keeps its upload-time SH setting.");
+							}
+						}
+						else {
+							ImGui::BulletText("GPU Uploaded SH Degree: not resident");
+						}
 					}
 				}
 
@@ -1056,6 +1096,12 @@ namespace sibr {
 					}
 				}
 			}
+			ImGui::SameLine();
+			ImGui::Text("Max SH: SH %d", clampShDegree(_maxShDegree));
+			ImGui::TextDisabled("Max SH is fixed by the low-VRAM default profile. Resident GPU assets are not reuploaded automatically.");
+			if (!_resourceBrowserStatus.empty()) {
+				ImGui::TextWrapped("%s", _resourceBrowserStatus.c_str());
+			}
 			ImGui::Separator();
 
 			ImGui::TextWrapped("Manifest: %s", _loadedManifestPath.empty() ? "(none)" : _loadedManifestPath.c_str());
@@ -1065,6 +1111,9 @@ namespace sibr {
 			ImGui::Text("  GPU Assets:       %s MB", formatMegabytes(GPUResourceManager::getInstance().totalBytes()).c_str());
 			if (renderingSystem) {
 				if (const auto* view = renderingSystem->getView("Gaussian View")) {
+					const Vector2i& internalResolution = view->getResolution();
+					ImGui::Text("  Render scale:     %.2f (%dx%d)", view->renderScale(), internalResolution.x(), internalResolution.y());
+					ImGui::Text("  Splat radius cap: %d px", view->maxSplatRadius());
 					ImGui::Text("  World buffers:    %s MB", formatMegabytes(view->worldBufferBytes()).c_str());
 					ImGui::Text("  Scratch (rast):   %s MB", formatMegabytes(view->scratchBufferBytes()).c_str());
 					ImGui::Text("  Output+Interop:   %s MB", formatMegabytes(view->outputInteropBytes()).c_str());

@@ -244,6 +244,13 @@ namespace sibr {
 		}
 
 		manifestPath_ = boost::filesystem::absolute(manifestPath);
+		if (assets_.empty()) {
+			SIBR_WRG << "Manifest '" << manifestPath_.string()
+				<< "' did not contain any valid assets. Check model_dir paths." << std::endl;
+			clear();
+			return false;
+		}
+
 		SIBR_LOG << "Loaded manifest '" << manifestPath_.string() << "' with " << assets_.size()
 			<< " asset(s) and " << rules_.size() << " rule(s)." << std::endl;
 		return true;

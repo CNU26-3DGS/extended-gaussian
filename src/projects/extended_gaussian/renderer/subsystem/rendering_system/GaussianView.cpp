@@ -6,6 +6,7 @@
 
 #include "RenderUtils.hpp"
 #include <core/graphics/GUI.hpp>
+#include <algorithm>
 #include <thread>
 #include <boost/asio.hpp>
 #include <rasterizer.h>
@@ -19,8 +20,17 @@ namespace sibr {
 	namespace {
 		constexpr double kScratchGrowFactor = 1.0;
 		constexpr double kWorldGrowFactor = 1.0;
-		constexpr size_t kWorldShDegree = 3;
-		constexpr size_t kWorldShCoefficients = (kWorldShDegree + 1) * (kWorldShDegree + 1);
+
+		int clampShDegree(int degree)
+		{
+			return std::max(0, std::min(3, degree));
+		}
+
+		size_t shCoefficientCount(int degree)
+		{
+			const int clampedDegree = clampShDegree(degree);
+			return static_cast<size_t>((clampedDegree + 1) * (clampedDegree + 1));
+		}
 	}
 
 	class BufferCopyRenderer
@@ -97,8 +107,14 @@ namespace sibr {
 		return lambda;
 	}
 
-	GaussianView::GaussianView(const RenderingSystem* p_owner, uint render_w, uint render_h, bool useInterop)
-		: owner(p_owner), ViewBase(render_w, render_h) {
+	GaussianView::GaussianView(
+		const RenderingSystem* p_owner,
+		uint render_w,
+		uint render_h,
+		bool useInterop,
+		float renderScale,
+		int maxSplatRadius)
+		: owner(p_owner), ViewBase(render_w, render_h), render_scale(renderScale), max_splat_radius(maxSplatRadius) {
 
 		copyRenderer = new BufferCopyRenderer();
 		copyRenderer->flip() = true;
@@ -159,6 +175,12 @@ namespace sibr {
 			return;
 		}
 
+		const int targetShDegree = renderShDegree();
+		if (targetShDegree != current_world_sh_degree) {
+			releaseWorldBuffers();
+			current_world_sh_degree = targetShDegree;
+			current_world_gausians_count = 0;
+		}
 		resizeWorldBuffersIfNeeded(totalCount);
 
 		// Convert view and projection to target coordinate system
@@ -216,9 +238,9 @@ namespace sibr {
 			geomBufferFunc,
 			binningBufferFunc,
 			imgBufferFunc,
-			totalCount,
-			3,
-			16,
+			static_cast<int>(totalCount),
+			current_world_sh_degree,
+			static_cast<int>(renderShCoefficientCount()),
 			background_cuda,
 			_resolution.x(), _resolution.y(),
 			world_pos_cuda,
@@ -240,7 +262,8 @@ namespace sibr {
 			nullptr,
 			world_rect_cuda,
 			nullptr,
-			nullptr
+			nullptr,
+			max_splat_radius
 		);
 
 		if (!_interop_failed) {
@@ -282,7 +305,7 @@ namespace sibr {
 			+ gaussianCount * 4 * sizeof(float)
 			+ gaussianCount * 3 * sizeof(float)
 			+ gaussianCount * sizeof(float)
-			+ gaussianCount * kWorldShCoefficients * 3 * sizeof(float)
+			+ gaussianCount * renderShCoefficientCount() * 3 * sizeof(float)
 			+ gaussianCount * 2 * sizeof(int);
 	}
 
@@ -302,6 +325,26 @@ namespace sibr {
 		totalBytes += 2 * sizeof(sibr::Matrix4f);
 		totalBytes += 2 * 3 * sizeof(float);
 		return totalBytes;
+	}
+
+	float GaussianView::renderScale() const
+	{
+		return render_scale;
+	}
+
+	int GaussianView::maxSplatRadius() const
+	{
+		return max_splat_radius;
+	}
+
+	int GaussianView::renderShDegree() const
+	{
+		return owner ? clampShDegree(owner->maxShDegree()) : 1;
+	}
+
+	size_t GaussianView::renderShCoefficientCount() const
+	{
+		return shCoefficientCount(current_world_sh_degree);
 	}
 
 	void GaussianView::releaseScratchBuffers()
@@ -389,7 +432,7 @@ namespace sibr {
 			CUDA_SAFE_CALL(cudaMalloc((void**)&world_rot_cuda, max_gaussians_count * 4 * sizeof(float)));
 			CUDA_SAFE_CALL(cudaMalloc((void**)&world_scale_cuda, max_gaussians_count * 3 * sizeof(float)));
 			CUDA_SAFE_CALL(cudaMalloc((void**)&world_opacity_cuda, max_gaussians_count * 1 * sizeof(float)));
-			CUDA_SAFE_CALL(cudaMalloc((void**)&world_shs_cuda, max_gaussians_count * kWorldShCoefficients * 3 * sizeof(float)));
+			CUDA_SAFE_CALL(cudaMalloc((void**)&world_shs_cuda, max_gaussians_count * renderShCoefficientCount() * 3 * sizeof(float)));
 
 			CUDA_SAFE_CALL(cudaMalloc((void**)&world_rect_cuda, max_gaussians_count * 2 * sizeof(int)));
 
@@ -431,7 +474,8 @@ namespace sibr {
 			source->shs_cuda,
 			source->count,
 			offset,
-			3
+			source->sh_degree,
+			current_world_sh_degree
 		);
 
 		appendOpacitiesToWorld(
@@ -480,18 +524,27 @@ namespace sibr {
 		);
 	}
 
-	void GaussianView::appendSHsToWorld(const float* src_shs, int count, int offset, int sh_degree)
+	void GaussianView::appendSHsToWorld(const float* src_shs, int count, size_t offset, int src_sh_degree, int dst_sh_degree)
 	{
-		int sh_coeffs = (sh_degree + 1) * (sh_degree + 1);
-		int floats_per_gaussian = sh_coeffs * 3;
+		const int src_coeffs = static_cast<int>(shCoefficientCount(src_sh_degree));
+		const int dst_coeffs = static_cast<int>(shCoefficientCount(dst_sh_degree));
+		const int threads = 256;
+		const int totalFloats = count * dst_coeffs * 3;
+		const int blocks = (totalFloats + threads - 1) / threads;
 
-		float* dst_ptr = world_shs_cuda + (offset * floats_per_gaussian);
-		size_t size_bytes = count * floats_per_gaussian * sizeof(float);
-
-		CUDA_SAFE_CALL(cudaMemcpyAsync(dst_ptr, src_shs, size_bytes, cudaMemcpyDeviceToDevice));
+		launchCopySHsKernel(
+			blocks,
+			threads,
+			count,
+			static_cast<int>(offset),
+			src_shs,
+			src_coeffs,
+			world_shs_cuda,
+			dst_coeffs
+		);
 	}
 
-	void GaussianView::appendOpacitiesToWorld(const float* src_opacities, int count, int offset)
+	void GaussianView::appendOpacitiesToWorld(const float* src_opacities, int count, size_t offset)
 	{
 		float* dst_ptr = world_opacity_cuda + offset;
 		size_t size_bytes = count * sizeof(float);
@@ -500,4 +553,3 @@ namespace sibr {
 	}
 
 }
-
