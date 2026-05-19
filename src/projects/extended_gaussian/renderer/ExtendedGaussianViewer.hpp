@@ -9,6 +9,8 @@
 #include <projects/extended_gaussian/renderer/resource/ResourceManager.hpp>
 #include <projects/extended_gaussian/renderer/subsystem/rendering_system/gpu_resource_manager/GPUResourceManager.hpp>
 
+#include <vector>
+
 namespace sibr {
 	class RenderingSystem;
 
@@ -17,12 +19,17 @@ namespace sibr {
 	public:
 		SIBR_CLASS_PTR(ExtendedGaussianViewer);
 
+		enum class UIMode {
+			Developer,
+			User
+		};
+
 		/*
 		 * \brief Creates a MultiViewManager in a given OS window.
 		 * \param window The OS window to use.
 		 * \param resize Should the window be resized by the manager to maximize usable space.
 		 */
-		ExtendedGaussianViewer(sibr::Window& window, bool resize = true);
+		ExtendedGaussianViewer(sibr::Window& window, bool resize = true, UIMode uiMode = UIMode::Developer);
 
 		/**
 		 * \brief Update subviews and the MultiViewManager.
@@ -54,6 +61,14 @@ namespace sibr {
 		const RenderingSystem* getRenderingSystem() const;
 
 	private:
+		struct UserMapBlock {
+			std::string id;
+			Vector3f minBounds = Vector3f::Zero();
+			Vector3f maxBounds = Vector3f::Zero();
+			bool gpuResident = false;
+			bool hasInstance = false;
+		};
+
 		bool loadManifestFile(const std::string& path);
 		size_t createManifestInstances(bool onlyMissing = true);
 		bool canFocusBlockCenter() const;
@@ -72,6 +87,10 @@ namespace sibr {
 		static std::string formatMegabytes(size_t bytes);
 		void setMaxShDegree(int degree);
 
+		void onShowUserMinimap(sibr::Window& win);
+		std::vector<UserMapBlock> collectUserMapBlocks() const;
+		bool focusCameraOnUserBlock(const std::string& id);
+
 		void onShowScenePanel(sibr::Window& win);
 		void onShowResourceBrowser(sibr::Window& win);
 		void onShowCapturePanel(Window& win);
@@ -81,11 +100,13 @@ namespace sibr {
 
 		sibr::Window& _window; ///< The OS window.
 		sibr::FPSCounter _fpsCounter; ///< A FPS counter.
+		UIMode _uiMode = UIMode::Developer;
 		bool _showGUI = true; ///< Should the GUI be displayed.
 		bool _showScenePanel = false;
 		bool _showResourceBrowser = false;
 		bool _showCapturePanel = false;
 		bool _showCameraSpeedPannel = true;
+		bool _userMinimapExpanded = false;
 
 		GaussianInstance* _selectedInstance = nullptr;
 		std::string _selectedField;

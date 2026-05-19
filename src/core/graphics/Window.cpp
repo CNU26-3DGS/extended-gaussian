@@ -19,6 +19,7 @@
 #include "imgui/imgui.h"
 #include "imgui_impl_glfw_gl3.h"
 
+#include <cstdlib>
 #include <regex>
 
 namespace sibr
@@ -344,6 +345,15 @@ namespace sibr
 
 			// Setup ImGui binding
 			ImGui::CreateContext();
+			if (const char* fontPath = std::getenv("SIBR_IMGUI_KOREAN_FONT")) {
+				if (fontPath[0] != '\0') {
+					ImGuiIO& io = ImGui::GetIO();
+					ImFont* font = io.Fonts->AddFontFromFileTTF(fontPath, 18.0f, nullptr, io.Fonts->GetGlyphRangesKorean());
+					if (!font) {
+						SIBR_WRG << "Failed to load ImGui Korean font: " << fontPath << std::endl;
+					}
+				}
+			}
 			ImGui_ImplGlfwGL3_Init(_glfwWin.get(), false);
 			glfwSetCharCallback(_glfwWin.get(), ImGui_ImplGlfw_CharCallback);
 
