@@ -9,6 +9,7 @@
 #include <projects/extended_gaussian/renderer/resource/ResourceManager.hpp>
 #include <projects/extended_gaussian/renderer/subsystem/rendering_system/gpu_resource_manager/GPUResourceManager.hpp>
 
+#include <unordered_set>
 #include <vector>
 
 namespace sibr {
@@ -88,6 +89,7 @@ namespace sibr {
 		void setMaxShDegree(int degree);
 
 		void onShowUserMinimap(sibr::Window& win);
+		void onShowUserInstanceList(sibr::Window& win);
 		std::vector<UserMapBlock> collectUserMapBlocks() const;
 		bool focusCameraOnUserBlock(const std::string& id);
 
@@ -107,6 +109,7 @@ namespace sibr {
 		bool _showCapturePanel = false;
 		bool _showCameraSpeedPannel = true;
 		bool _userMinimapExpanded = false;
+		std::unordered_set<std::string> _userFavoriteInstances;
 
 		GaussianInstance* _selectedInstance = nullptr;
 		std::string _selectedField;
