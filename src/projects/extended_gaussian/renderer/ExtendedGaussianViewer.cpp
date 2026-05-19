@@ -209,6 +209,7 @@ namespace sibr {
 		MultiViewBase::onRender(win);
 		if (_uiMode == UIMode::User && _showGUI) {
 			onShowUserMinimap(win);
+			onShowUserInstanceList(win);
 		}
 		++_frameIndex;
 
@@ -1124,6 +1125,114 @@ namespace sibr {
 					focusCameraOnUserBlock(clickedBlock);
 				}
 			}
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);
+		ImGui::PopStyleVar(2);
+	}
+
+	void ExtendedGaussianViewer::onShowUserInstanceList(Window& win)
+	{
+		if (!_scene) {
+			return;
+		}
+
+		const Vector2f winSize = win.size().cast<float>();
+		const float scale = std::max(1.0f, ImGui::GetIO().FontGlobalScale);
+		const float panelWidth = 260.0f * scale;
+		const float panelHeight = std::min(std::max(320.0f * scale, winSize.y() - 40.0f * scale), 560.0f * scale);
+		const ImVec2 panelPos(std::max(20.0f * scale, winSize.x() - panelWidth - 20.0f * scale), 20.0f * scale);
+
+		ImGui::SetNextWindowPos(panelPos, ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(panelWidth, panelHeight), ImGuiCond_Always);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * scale);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.00f, 1.00f, 1.00f, 0.92f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.73f, 0.78f, 0.86f, 0.72f));
+
+		const ImGuiWindowFlags flags =
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoSavedSettings;
+
+		if (ImGui::Begin("User Instance List", nullptr, flags)) {
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.56f, 0.79f, 0.98f, 0.95f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.62f, 0.84f, 0.99f, 1.00f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.49f, 0.73f, 0.95f, 1.00f));
+			ImGui::Button("즐겨찾기 목록", ImVec2(-1.0f, 0.0f));
+			ImGui::PopStyleColor(3);
+
+			std::vector<GaussianInstance*> instances;
+			std::unordered_set<std::string> existingNames;
+			for (const auto& pair : _scene->getInstances()) {
+				if (pair.second) {
+					instances.push_back(pair.second.get());
+					existingNames.insert(pair.first);
+				}
+			}
+
+			for (auto it = _userFavoriteInstances.begin(); it != _userFavoriteInstances.end();) {
+				if (existingNames.count(*it) == 0) {
+					it = _userFavoriteInstances.erase(it);
+				}
+				else {
+					++it;
+				}
+			}
+
+			std::sort(instances.begin(), instances.end(), [this](const GaussianInstance* lhs, const GaussianInstance* rhs) {
+				const bool lhsFavorite = _userFavoriteInstances.count(lhs->getName()) > 0;
+				const bool rhsFavorite = _userFavoriteInstances.count(rhs->getName()) > 0;
+				if (lhsFavorite != rhsFavorite) {
+					return lhsFavorite;
+				}
+				return lhs->getName() < rhs->getName();
+			});
+
+			const float listHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y);
+			if (ImGui::BeginChild("UserInstanceListScroll", ImVec2(0.0f, listHeight), false)) {
+				if (instances.empty()) {
+					ImGui::TextDisabled("No instances");
+				}
+				for (GaussianInstance* instance : instances) {
+					if (!instance) {
+						continue;
+					}
+
+					const std::string& name = instance->getName();
+					const bool favorite = _userFavoriteInstances.count(name) > 0;
+					const bool selected = _selectedInstance == instance;
+					ImGui::PushID(name.c_str());
+					ImGui::PushStyleColor(ImGuiCol_Text, favorite ? ImVec4(0.96f, 0.62f, 0.04f, 1.0f) : ImVec4(0.39f, 0.45f, 0.55f, 1.0f));
+					if (ImGui::Button(favorite ? "★" : "☆", ImVec2(30.0f * scale, 0.0f))) {
+						if (favorite) {
+							_userFavoriteInstances.erase(name);
+						}
+						else {
+							_userFavoriteInstances.insert(name);
+						}
+					}
+					ImGui::PopStyleColor();
+					ImGui::SameLine();
+
+					if (selected) {
+						ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.86f, 0.95f, 1.0f, 1.0f));
+						ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.82f, 0.93f, 1.0f, 1.0f));
+						ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.76f, 0.89f, 1.0f, 1.0f));
+					}
+					if (ImGui::Selectable(name.c_str(), selected, 0, ImVec2(0.0f, 30.0f * scale))) {
+						_selectedInstance = instance;
+						focusCameraOnInstanceCenter(*instance);
+					}
+					if (selected) {
+						ImGui::PopStyleColor(3);
+					}
+					ImGui::PopID();
+				}
+			}
+			ImGui::EndChild();
 		}
 		ImGui::End();
 		ImGui::PopStyleColor(2);
