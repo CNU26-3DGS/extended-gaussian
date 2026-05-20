@@ -70,7 +70,13 @@ namespace sibr {
 			bool hasInstance = false;
 		};
 
+		enum class UserMinimapMode {
+			FixedRooms,
+			InputBlocks
+		};
+
 		bool loadManifestFile(const std::string& path);
+		bool importUserPlyFile(const std::string& path);
 		size_t createManifestInstances(bool onlyMissing = true);
 		bool canFocusBlockCenter() const;
 		bool focusCameraOnBlockCenter();
@@ -89,6 +95,7 @@ namespace sibr {
 		void setMaxShDegree(int degree);
 
 		void onShowUserMinimap(sibr::Window& win);
+		void onShowUserStartupSelection(sibr::Window& win);
 		void onShowUserInstanceList(sibr::Window& win);
 		void onShowUserNavigationControl(sibr::Window& win);
 		std::vector<UserMapBlock> collectUserMapBlocks() const;
@@ -111,6 +118,10 @@ namespace sibr {
 		bool _showCapturePanel = false;
 		bool _showCameraSpeedPannel = true;
 		bool _userMinimapExpanded = false;
+		UserMinimapMode _userMinimapMode = UserMinimapMode::FixedRooms;
+		std::string _userFixedMinimapSelectedId = "401";
+		bool _userStartupSelectionOpen = false;
+		std::string _userStartupSelectionStatus;
 		std::unordered_set<std::string> _userFavoriteInstances;
 
 		GaussianInstance* _selectedInstance = nullptr;

@@ -17,6 +17,7 @@ namespace sibr {
 		SIBR_CLASS_PTR(GaussianLoader);
 
 		static GaussianField::UPtr load(const std::string& modelPath);
+		static GaussianField::UPtr loadPlyFile(const std::string& plyPath);
 		static GaussianField::Ptr loadShared(const std::string& modelPath);
 		static GaussianField::Ptr loadFromModelDir(const boost::filesystem::path& modelPath);
 

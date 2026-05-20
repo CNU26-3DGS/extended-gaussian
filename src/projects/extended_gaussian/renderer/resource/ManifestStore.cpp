@@ -142,6 +142,11 @@ namespace sibr {
 			settings_.max_concurrent_disk_loads = std::max(1, parseInt(global, "max_concurrent_disk_loads", settings_.max_concurrent_disk_loads));
 			settings_.default_unload_hysteresis_sec = parseDouble(global, "default_unload_hysteresis_sec", settings_.default_unload_hysteresis_sec);
 			settings_.warm_rule_assets_cpu = parseBool(global, "warm_rule_assets_cpu", settings_.warm_rule_assets_cpu);
+			settings_.initial_focus_asset = parseString(global, "initial_focus_asset", settings_.initial_focus_asset);
+			settings_.initial_camera_up = parseVector3(global, "initial_camera_up", settings_.initial_camera_up);
+			if (settings_.initial_camera_up.squaredNorm() < 1e-6f) {
+				settings_.initial_camera_up = Vector3f(0.0f, 1.0f, 0.0f);
+			}
 		}
 
 		const auto assetsIt = root.find("assets");

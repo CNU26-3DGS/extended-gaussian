@@ -30,6 +30,8 @@ namespace sibr {
 		int max_concurrent_disk_loads = 1;
 		double default_unload_hysteresis_sec = 1.0;
 		bool warm_rule_assets_cpu = false;
+		AssetId initial_focus_asset;
+		Vector3f initial_camera_up = Vector3f(0.0f, 1.0f, 0.0f);
 	};
 
 	struct AssetDescriptor {

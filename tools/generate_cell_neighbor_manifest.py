@@ -81,6 +81,7 @@ def neighbor_ids(
     block_id: int,
     dims: tuple[int, int, int],
     radius_xy: int,
+    radius_z: int,
 ) -> list[int]:
     cols, rows, layers = dims
     layer_size = cols * rows
@@ -90,15 +91,19 @@ def neighbor_ids(
     col = layer_index % cols
 
     result: list[int] = []
-    for dy in range(-radius_xy, radius_xy + 1):
-        for dx in range(-radius_xy, radius_xy + 1):
+    for dz in range(-radius_z, radius_z + 1):
+        neighbor_layer = layer + dz
+        if neighbor_layer < 0 or neighbor_layer >= layers:
+            continue
+        for dy in range(-radius_xy, radius_xy + 1):
             neighbor_row = row + dy
-            neighbor_col = col + dx
             if neighbor_row < 0 or neighbor_row >= rows:
                 continue
-            if neighbor_col < 0 or neighbor_col >= cols:
-                continue
-            result.append(layer * layer_size + neighbor_row * cols + neighbor_col)
+            for dx in range(-radius_xy, radius_xy + 1):
+                neighbor_col = col + dx
+                if neighbor_col < 0 or neighbor_col >= cols:
+                    continue
+                result.append(neighbor_layer * layer_size + neighbor_row * cols + neighbor_col)
     return result
 
 
@@ -107,6 +112,7 @@ def main() -> None:
     parser.add_argument("dataset_root", type=Path, help="Root directory containing cfg_args and cells/")
     parser.add_argument("output", type=Path, help="Output manifest JSON path")
     parser.add_argument("--radius-xy", type=int, default=1, help="Neighbor radius in XY grid")
+    parser.add_argument("--radius-z", type=int, default=0, help="Neighbor radius across Z layers")
     parser.add_argument("--origin-y", choices=("min", "max"), default="min", help="How block rows map onto Y")
     parser.add_argument(
         "--warm-rule-assets-cpu",
@@ -125,6 +131,8 @@ def main() -> None:
     parser.add_argument("--max-cpu-evictions-per-frame", type=int, default=4)
     parser.add_argument("--max-concurrent-disk-loads", type=int, default=2)
     parser.add_argument("--default-unload-hysteresis-sec", type=float, default=1.0)
+    parser.add_argument("--initial-focus-asset", default="")
+    parser.add_argument("--initial-camera-up", type=float, nargs=3, metavar=("X", "Y", "Z"))
     args = parser.parse_args()
 
     dataset_root = args.dataset_root.resolve()
@@ -164,7 +172,7 @@ def main() -> None:
             "unload_hysteresis_sec": args.default_unload_hysteresis_sec,
         }
 
-        required_assets = [f"cell{neighbor_id}" for neighbor_id in neighbor_ids(block_id, dims, args.radius_xy)]
+        required_assets = [f"cell{neighbor_id}" for neighbor_id in neighbor_ids(block_id, dims, args.radius_xy, args.radius_z)]
         rules.append(
             {
                 "name": f"camera_cell_{block_id}",
@@ -175,24 +183,31 @@ def main() -> None:
             }
         )
 
+    global_settings: dict[str, object] = {
+        "target_vram_mb": args.target_vram_mb,
+        "target_ram_mb": args.target_ram_mb,
+        "max_upload_mb_per_frame": args.max_upload_mb_per_frame,
+        "max_gpu_evictions_per_frame": args.max_gpu_evictions_per_frame,
+        "max_cpu_evictions_per_frame": args.max_cpu_evictions_per_frame,
+        "max_concurrent_disk_loads": args.max_concurrent_disk_loads,
+        "default_unload_hysteresis_sec": args.default_unload_hysteresis_sec,
+        "warm_rule_assets_cpu": warm_rule_assets_cpu,
+    }
+    if args.initial_focus_asset:
+        global_settings["initial_focus_asset"] = args.initial_focus_asset
+    if args.initial_camera_up is not None:
+        global_settings["initial_camera_up"] = args.initial_camera_up
+
     manifest = {
-        "global": {
-            "target_vram_mb": args.target_vram_mb,
-            "target_ram_mb": args.target_ram_mb,
-            "max_upload_mb_per_frame": args.max_upload_mb_per_frame,
-            "max_gpu_evictions_per_frame": args.max_gpu_evictions_per_frame,
-            "max_cpu_evictions_per_frame": args.max_cpu_evictions_per_frame,
-            "max_concurrent_disk_loads": args.max_concurrent_disk_loads,
-            "default_unload_hysteresis_sec": args.default_unload_hysteresis_sec,
-            "warm_rule_assets_cpu": warm_rule_assets_cpu,
-        },
+        "global": global_settings,
         "assets": assets,
         "rules": rules,
     }
 
     output_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote manifest to {output_path}")
-    print("Sample cell20 neighbors:", ", ".join(next(rule["required"] for rule in rules if rule["name"] == "camera_cell_20")))
+    sample_rule = next((rule for rule in rules if rule["name"] == "camera_cell_20"), rules[-1])
+    print(f"Sample {sample_rule['name']} neighbors:", ", ".join(sample_rule["required"]))
 
 
 if __name__ == "__main__":
