@@ -1,0 +1,469 @@
+{
+  "global": {
+    "target_vram_mb": 0,
+    "target_ram_mb": 0,
+    "max_upload_mb_per_frame": 512,
+    "max_gpu_evictions_per_frame": 4,
+    "max_cpu_evictions_per_frame": 4,
+    "max_concurrent_disk_loads": 2,
+    "default_unload_hysteresis_sec": 1.0,
+    "warm_rule_assets_cpu": true,
+    "initial_focus_asset": "cell7"
+  },
+  "assets": {
+    "cell0": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell0",
+      "tags": [
+        "row_0",
+        "col_0",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -6.5,
+        -7.0,
+        -4.5
+      ],
+      "bounds_max": [
+        -3.5,
+        5.0,
+        0.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell1": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell1",
+      "tags": [
+        "row_0",
+        "col_1",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -3.5,
+        -7.0,
+        -4.5
+      ],
+      "bounds_max": [
+        -0.5,
+        5.0,
+        0.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell2": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell2",
+      "tags": [
+        "row_0",
+        "col_2",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        -0.5,
+        -7.0,
+        -4.5
+      ],
+      "bounds_max": [
+        2.5,
+        5.0,
+        0.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell3": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell3",
+      "tags": [
+        "row_0",
+        "col_3",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        2.5,
+        -7.0,
+        -4.5
+      ],
+      "bounds_max": [
+        5.5,
+        5.0,
+        0.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell4": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell4",
+      "tags": [
+        "row_0",
+        "col_4",
+        "layer_0",
+        "cell"
+      ],
+      "bounds_min": [
+        5.5,
+        -7.0,
+        -4.5
+      ],
+      "bounds_max": [
+        8.5,
+        5.0,
+        0.0
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell5": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell5",
+      "tags": [
+        "row_0",
+        "col_0",
+        "layer_1",
+        "cell"
+      ],
+      "bounds_min": [
+        -6.5,
+        -7.0,
+        0.0
+      ],
+      "bounds_max": [
+        -3.5,
+        5.0,
+        4.5
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell6": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell6",
+      "tags": [
+        "row_0",
+        "col_1",
+        "layer_1",
+        "cell"
+      ],
+      "bounds_min": [
+        -3.5,
+        -7.0,
+        0.0
+      ],
+      "bounds_max": [
+        -0.5,
+        5.0,
+        4.5
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell7": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell7",
+      "tags": [
+        "row_0",
+        "col_2",
+        "layer_1",
+        "cell"
+      ],
+      "bounds_min": [
+        -0.5,
+        -7.0,
+        0.0
+      ],
+      "bounds_max": [
+        2.5,
+        5.0,
+        4.5
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell8": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell8",
+      "tags": [
+        "row_0",
+        "col_3",
+        "layer_1",
+        "cell"
+      ],
+      "bounds_min": [
+        2.5,
+        -7.0,
+        0.0
+      ],
+      "bounds_max": [
+        5.5,
+        5.0,
+        4.5
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    },
+    "cell9": {
+      "model_dir": "../swaptest/scene_W2_4_3_xz10_aabb/cells/cell9",
+      "tags": [
+        "row_0",
+        "col_4",
+        "layer_1",
+        "cell"
+      ],
+      "bounds_min": [
+        5.5,
+        -7.0,
+        0.0
+      ],
+      "bounds_max": [
+        8.5,
+        5.0,
+        4.5
+      ],
+      "priority": 0,
+      "pin_cpu": false,
+      "pin_gpu": false,
+      "prefetch_distance": 0.0,
+      "unload_hysteresis_sec": 1.0
+    }
+  },
+  "rules": [
+    {
+      "name": "camera_cell_0",
+      "type": "camera_bounds",
+      "region_min": [
+        -6.5,
+        -7.0,
+        -4.5
+      ],
+      "region_max": [
+        -3.5,
+        5.0,
+        0.0
+      ],
+      "required": [
+        "cell0",
+        "cell1",
+        "cell5",
+        "cell6"
+      ]
+    },
+    {
+      "name": "camera_cell_1",
+      "type": "camera_bounds",
+      "region_min": [
+        -3.5,
+        -7.0,
+        -4.5
+      ],
+      "region_max": [
+        -0.5,
+        5.0,
+        0.0
+      ],
+      "required": [
+        "cell0",
+        "cell1",
+        "cell2",
+        "cell5",
+        "cell6",
+        "cell7"
+      ]
+    },
+    {
+      "name": "camera_cell_2",
+      "type": "camera_bounds",
+      "region_min": [
+        -0.5,
+        -7.0,
+        -4.5
+      ],
+      "region_max": [
+        2.5,
+        5.0,
+        0.0
+      ],
+      "required": [
+        "cell1",
+        "cell2",
+        "cell3",
+        "cell6",
+        "cell7",
+        "cell8"
+      ]
+    },
+    {
+      "name": "camera_cell_3",
+      "type": "camera_bounds",
+      "region_min": [
+        2.5,
+        -7.0,
+        -4.5
+      ],
+      "region_max": [
+        5.5,
+        5.0,
+        0.0
+      ],
+      "required": [
+        "cell2",
+        "cell3",
+        "cell4",
+        "cell7",
+        "cell8",
+        "cell9"
+      ]
+    },
+    {
+      "name": "camera_cell_4",
+      "type": "camera_bounds",
+      "region_min": [
+        5.5,
+        -7.0,
+        -4.5
+      ],
+      "region_max": [
+        8.5,
+        5.0,
+        0.0
+      ],
+      "required": [
+        "cell3",
+        "cell4",
+        "cell8",
+        "cell9"
+      ]
+    },
+    {
+      "name": "camera_cell_5",
+      "type": "camera_bounds",
+      "region_min": [
+        -6.5,
+        -7.0,
+        0.0
+      ],
+      "region_max": [
+        -3.5,
+        5.0,
+        4.5
+      ],
+      "required": [
+        "cell0",
+        "cell1",
+        "cell5",
+        "cell6"
+      ]
+    },
+    {
+      "name": "camera_cell_6",
+      "type": "camera_bounds",
+      "region_min": [
+        -3.5,
+        -7.0,
+        0.0
+      ],
+      "region_max": [
+        -0.5,
+        5.0,
+        4.5
+      ],
+      "required": [
+        "cell0",
+        "cell1",
+        "cell2",
+        "cell5",
+        "cell6",
+        "cell7"
+      ]
+    },
+    {
+      "name": "camera_cell_7",
+      "type": "camera_bounds",
+      "region_min": [
+        -0.5,
+        -7.0,
+        0.0
+      ],
+      "region_max": [
+        2.5,
+        5.0,
+        4.5
+      ],
+      "required": [
+        "cell1",
+        "cell2",
+        "cell3",
+        "cell6",
+        "cell7",
+        "cell8"
+      ]
+    },
+    {
+      "name": "camera_cell_8",
+      "type": "camera_bounds",
+      "region_min": [
+        2.5,
+        -7.0,
+        0.0
+      ],
+      "region_max": [
+        5.5,
+        5.0,
+        4.5
+      ],
+      "required": [
+        "cell2",
+        "cell3",
+        "cell4",
+        "cell7",
+        "cell8",
+        "cell9"
+      ]
+    },
+    {
+      "name": "camera_cell_9",
+      "type": "camera_bounds",
+      "region_min": [
+        5.5,
+        -7.0,
+        0.0
+      ],
+      "region_max": [
+        8.5,
+        5.0,
+        4.5
+      ],
+      "required": [
+        "cell3",
+        "cell4",
+        "cell8",
+        "cell9"
+      ]
+    }
+  ]
+}
