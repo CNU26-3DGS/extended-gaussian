@@ -75,6 +75,11 @@ namespace sibr {
 			InputBlocks
 		};
 
+		enum class UserInstanceListMode {
+			FixedRooms,
+			InputInstances
+		};
+
 		bool loadManifestFile(const std::string& path);
 		bool importUserPlyFile(const std::string& path);
 		size_t createManifestInstances(bool onlyMissing = true);
@@ -119,10 +124,14 @@ namespace sibr {
 		bool _showCameraSpeedPannel = true;
 		bool _userMinimapExpanded = false;
 		UserMinimapMode _userMinimapMode = UserMinimapMode::FixedRooms;
+		UserInstanceListMode _userInstanceListMode = UserInstanceListMode::FixedRooms;
 		std::string _userFixedMinimapSelectedId = "401";
 		bool _userStartupSelectionOpen = false;
 		std::string _userStartupSelectionStatus;
 		std::unordered_set<std::string> _userFavoriteInstances;
+		std::unordered_set<std::string> _userFavoriteFixedRooms;
+		float _userInstancePanelWidth = 0.0f;
+		float _userInstancePanelHeight = 0.0f;
 
 		GaussianInstance* _selectedInstance = nullptr;
 		std::string _selectedField;

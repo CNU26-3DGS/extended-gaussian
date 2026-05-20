@@ -32,6 +32,7 @@ namespace sibr {
 			Vector2f winSize = Vector2f(1.0f, 1.0f);
 			float dpiScale = 1.0f;
 			float resolutionScale = 1.0f;
+			float fontScale = 1.0f;
 			float scale = 1.0f;
 			float margin = 24.0f;
 		};
@@ -49,6 +50,7 @@ namespace sibr {
 			const float widthScale = layout.winSize.x() / baseWidth;
 			const float heightScale = layout.winSize.y() / baseHeight;
 			layout.resolutionScale = clampFloat(std::min(widthScale, heightScale), 0.72f, 1.45f);
+			layout.fontScale = layout.resolutionScale * 1.18f;
 			layout.scale = layout.dpiScale * layout.resolutionScale;
 			layout.margin = 24.0f * layout.scale;
 			return layout;
@@ -58,6 +60,45 @@ namespace sibr {
 		{
 			available = std::max(1.0f, available);
 			return std::min(std::max(preferred, minimum), available);
+		}
+
+		void drawUserStarIcon(ImDrawList* drawList, const ImVec2& center, float radius, bool filled, ImU32 color, float thickness)
+		{
+			std::array<ImVec2, 10> points;
+			const float innerRadius = radius * 0.46f;
+			const float startAngle = -3.14159265f * 0.5f;
+			for (int i = 0; i < static_cast<int>(points.size()); ++i) {
+				const float pointRadius = (i % 2 == 0) ? radius : innerRadius;
+				const float angle = startAngle + static_cast<float>(i) * 3.14159265f / 5.0f;
+				points[i] = ImVec2(
+					center.x + std::cos(angle) * pointRadius,
+					center.y + std::sin(angle) * pointRadius);
+			}
+
+			if (filled) {
+				for (int i = 0; i < static_cast<int>(points.size()); ++i) {
+					drawList->AddTriangleFilled(center, points[i], points[(i + 1) % points.size()], color);
+				}
+			}
+			drawList->AddPolyline(points.data(), static_cast<int>(points.size()), color, true, thickness);
+		}
+
+		bool drawUserStarButton(const char* id, bool favorite, float size, float scale)
+		{
+			ImGui::InvisibleButton(id, ImVec2(size, size));
+			const bool clicked = ImGui::IsItemClicked(0);
+			const bool hovered = ImGui::IsItemHovered();
+			const ImVec2 itemMin = ImGui::GetItemRectMin();
+			const ImVec2 itemMax = ImGui::GetItemRectMax();
+			const ImVec2 center((itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
+			const ImU32 starColor = favorite ? IM_COL32(246, 158, 11, 255) : IM_COL32(148, 163, 184, 255);
+			const ImU32 hoverFill = IM_COL32(235, 248, 255, hovered ? 210 : 0);
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			if (hovered) {
+				drawList->AddRectFilled(itemMin, itemMax, hoverFill, 5.0f * scale);
+			}
+			drawUserStarIcon(drawList, center, size * 0.28f, favorite, starColor, favorite ? 1.4f * scale : 1.8f * scale);
+			return clicked;
 		}
 	}
 
@@ -1125,7 +1166,7 @@ namespace sibr {
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.49f, 0.73f, 0.95f, 1.00f));
 
 		if (ImGui::BeginPopupModal("데이터 선택", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
-			ImGui::SetWindowFontScale(layout.resolutionScale);
+			ImGui::SetWindowFontScale(layout.fontScale);
 			ImGui::TextUnformatted("시작할 데이터를 선택하세요");
 			ImGui::TextDisabled("manifest JSON 또는 단일 PLY 파일을 불러옵니다.");
 			ImGui::Spacing();
@@ -1219,7 +1260,7 @@ namespace sibr {
 			ImGuiWindowFlags_NoSavedSettings;
 
 		if (ImGui::Begin("User Minimap", nullptr, flags)) {
-			ImGui::SetWindowFontScale(layout.resolutionScale);
+			ImGui::SetWindowFontScale(layout.fontScale);
 			const ImVec2 canvasPos = ImGui::GetCursorScreenPos();
 			const ImVec2 canvasSize(mapWidth, mapHeight);
 			ImGui::InvisibleButton("##UserMinimapCanvas", canvasSize);
@@ -1494,9 +1535,22 @@ namespace sibr {
 
 		const UserUILayout layout = getUserUILayout(win);
 		const float scale = layout.scale;
-		const float maxPanelWidth = std::max(190.0f * layout.dpiScale, layout.winSize.x() * 0.32f);
-		const float panelWidth = clampFloat(260.0f * scale, 190.0f * layout.dpiScale, maxPanelWidth);
-		const float panelHeight = fitUserDimension(520.0f * scale, 280.0f * layout.dpiScale, layout.winSize.y() - 2.0f * layout.margin);
+		const float minPanelWidth = 210.0f * layout.dpiScale;
+		const float maxPanelWidth = std::max(minPanelWidth, layout.winSize.x() - 2.0f * layout.margin);
+		const float minPanelHeight = 280.0f * layout.dpiScale;
+		const float maxPanelHeight = std::max(minPanelHeight, layout.winSize.y() - 2.0f * layout.margin);
+		const float defaultPanelWidth = clampFloat(260.0f * scale, minPanelWidth, maxPanelWidth);
+		const float defaultPanelHeight = fitUserDimension(520.0f * scale, minPanelHeight, maxPanelHeight);
+		if (_userInstancePanelWidth <= 0.0f) {
+			_userInstancePanelWidth = defaultPanelWidth;
+		}
+		if (_userInstancePanelHeight <= 0.0f) {
+			_userInstancePanelHeight = defaultPanelHeight;
+		}
+		_userInstancePanelWidth = clampFloat(_userInstancePanelWidth, minPanelWidth, maxPanelWidth);
+		_userInstancePanelHeight = clampFloat(_userInstancePanelHeight, minPanelHeight, maxPanelHeight);
+		const float panelWidth = _userInstancePanelWidth;
+		const float panelHeight = _userInstancePanelHeight;
 		const ImVec2 panelPos(
 			std::max(layout.margin, layout.winSize.x() - panelWidth - layout.margin),
 			layout.margin);
@@ -1516,82 +1570,246 @@ namespace sibr {
 			ImGuiWindowFlags_NoSavedSettings;
 
 		if (ImGui::Begin("User Instance List", nullptr, flags)) {
-			ImGui::SetWindowFontScale(layout.resolutionScale);
+			ImGui::SetWindowFontScale(layout.fontScale);
+			const bool fixedRoomList = _userInstanceListMode == UserInstanceListMode::FixedRooms;
+			const float toggleWidth = 58.0f * scale;
+			const float headerSpacing = 8.0f * scale;
+			const float headerTitleWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - toggleWidth - headerSpacing);
 			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.56f, 0.79f, 0.98f, 0.95f));
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.62f, 0.84f, 0.99f, 1.00f));
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.49f, 0.73f, 0.95f, 1.00f));
-			ImGui::Button("즐겨찾기 목록", ImVec2(-1.0f, 0.0f));
+			ImGui::Button("즐겨찾기 목록", ImVec2(headerTitleWidth, 0.0f));
+			ImGui::SameLine(0.0f, headerSpacing);
+			if (ImGui::Button(fixedRoomList ? "입력" : "고정", ImVec2(toggleWidth, 0.0f))) {
+				_userInstanceListMode = fixedRoomList ? UserInstanceListMode::InputInstances : UserInstanceListMode::FixedRooms;
+			}
 			ImGui::PopStyleColor(3);
+			ImGui::TextDisabled("%s", fixedRoomList ? "고정 목록" : "입력 목록");
 
-			std::vector<GaussianInstance*> instances;
-			std::unordered_set<std::string> existingNames;
-			for (const auto& pair : _scene->getInstances()) {
-				if (pair.second) {
-					instances.push_back(pair.second.get());
-					existingNames.insert(pair.first);
-				}
-			}
+			if (fixedRoomList) {
+				struct FixedRoomEntry {
+					const char* id;
+					const char* label;
+				};
+				static const std::array<FixedRoomEntry, 12> fixedRooms = { {
+					{ "401", "401" },
+					{ "지란지교", "지란지교" },
+					{ "404-1", "404-1" },
+					{ "405", "405" },
+					{ "409", "409" },
+					{ "410", "410" },
+					{ "411", "411" },
+					{ "412", "412" },
+					{ "413", "413" },
+					{ "414", "414" },
+					{ "415", "415" },
+					{ "416", "416" },
+				} };
 
-			for (auto it = _userFavoriteInstances.begin(); it != _userFavoriteInstances.end();) {
-				if (existingNames.count(*it) == 0) {
-					it = _userFavoriteInstances.erase(it);
-				}
-				else {
-					++it;
-				}
-			}
-
-			std::sort(instances.begin(), instances.end(), [this](const GaussianInstance* lhs, const GaussianInstance* rhs) {
-				const bool lhsFavorite = _userFavoriteInstances.count(lhs->getName()) > 0;
-				const bool rhsFavorite = _userFavoriteInstances.count(rhs->getName()) > 0;
-				if (lhsFavorite != rhsFavorite) {
-					return lhsFavorite;
-				}
-				return lhs->getName() < rhs->getName();
-			});
-
-			const float listHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y);
-			if (ImGui::BeginChild("UserInstanceListScroll", ImVec2(0.0f, listHeight), false)) {
-				if (instances.empty()) {
-					ImGui::TextDisabled("No instances");
-				}
-				for (GaussianInstance* instance : instances) {
-					if (!instance) {
-						continue;
-					}
-
-					const std::string& name = instance->getName();
-					const bool favorite = _userFavoriteInstances.count(name) > 0;
-					const bool selected = _selectedInstance == instance;
-					ImGui::PushID(name.c_str());
-					ImGui::PushStyleColor(ImGuiCol_Text, favorite ? ImVec4(0.96f, 0.62f, 0.04f, 1.0f) : ImVec4(0.39f, 0.45f, 0.55f, 1.0f));
-					if (ImGui::Button(favorite ? "★" : "☆", ImVec2(30.0f * scale, 0.0f))) {
-						if (favorite) {
-							_userFavoriteInstances.erase(name);
-						}
-						else {
-							_userFavoriteInstances.insert(name);
+				const float listHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y);
+				if (ImGui::BeginChild("UserFixedRoomListScroll", ImVec2(0.0f, listHeight), false)) {
+					std::string selectedName = _userFixedMinimapSelectedId;
+					if (_selectedInstance) {
+						const std::string& instanceName = _selectedInstance->getName();
+						for (const FixedRoomEntry& room : fixedRooms) {
+							if (instanceName == room.id || instanceName == room.label) {
+								selectedName = instanceName;
+								break;
+							}
 						}
 					}
-					ImGui::PopStyleColor();
-					ImGui::SameLine();
+					auto drawFixedRoom = [&](const FixedRoomEntry& room) {
+						const std::string key = room.id;
+						const bool favorite = _userFavoriteFixedRooms.count(key) > 0;
+						const bool selected = selectedName == room.id || selectedName == room.label;
+						const float rowHeight = 42.0f * scale;
+						const float rowWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+						const float starWidth = 36.0f * scale;
+						const float labelFontSize = ImGui::GetFontSize() * 1.25f;
+						const float starFontSize = ImGui::GetFontSize() * 1.18f;
+						const ImU32 rowFill = selected ? IM_COL32(219, 242, 255, 245) : IM_COL32(255, 255, 255, 0);
+						const ImU32 rowHoverFill = IM_COL32(235, 248, 255, 230);
+						const ImU32 rowBorder = selected ? IM_COL32(143, 202, 249, 255) : IM_COL32(226, 232, 240, 120);
+						const ImU32 labelColor = IM_COL32(15, 23, 42, 255);
+						const ImU32 starColor = favorite ? IM_COL32(246, 158, 11, 255) : IM_COL32(148, 163, 184, 255);
 
-					if (selected) {
-						ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.86f, 0.95f, 1.0f, 1.0f));
-						ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.82f, 0.93f, 1.0f, 1.0f));
-						ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.76f, 0.89f, 1.0f, 1.0f));
+						ImGui::PushID(room.id);
+						const ImVec2 rowPos = ImGui::GetCursorScreenPos();
+						ImGui::InvisibleButton("##FixedRoomRow", ImVec2(rowWidth, rowHeight));
+						const bool hovered = ImGui::IsItemHovered();
+						if (hovered && ImGui::IsMouseClicked(0)) {
+							const ImVec2 mousePos = ImGui::GetIO().MousePos;
+							const bool starClicked = mousePos.x >= rowPos.x && mousePos.x <= rowPos.x + starWidth
+								&& mousePos.y >= rowPos.y && mousePos.y <= rowPos.y + rowHeight;
+							if (starClicked) {
+								if (favorite) {
+									_userFavoriteFixedRooms.erase(key);
+								}
+								else {
+									_userFavoriteFixedRooms.insert(key);
+								}
+							}
+							else {
+								_userFixedMinimapSelectedId = key;
+								if (!focusCameraOnUserBlock(room.id) && key != room.label) {
+									focusCameraOnUserBlock(room.label);
+								}
+							}
+						}
+
+						ImDrawList* drawList = ImGui::GetWindowDrawList();
+						const ImVec2 rowEnd(rowPos.x + rowWidth, rowPos.y + rowHeight);
+						drawList->AddRectFilled(rowPos, rowEnd, hovered && !selected ? rowHoverFill : rowFill, 6.0f * scale);
+						drawList->AddRect(rowPos, rowEnd, rowBorder, 6.0f * scale, 0, selected ? 1.4f * scale : 1.0f * scale);
+
+						const ImVec2 starCenter(rowPos.x + starWidth * 0.5f, rowPos.y + rowHeight * 0.5f);
+						drawUserStarIcon(drawList, starCenter, starFontSize * 0.42f, favorite, starColor, favorite ? 1.4f * scale : 1.8f * scale);
+
+						const ImVec2 labelPos(
+							rowPos.x + starWidth + 10.0f * scale,
+							rowPos.y + (rowHeight - labelFontSize) * 0.5f);
+						drawList->AddText(ImGui::GetFont(), labelFontSize, labelPos, labelColor, room.label);
+						drawList->AddText(ImGui::GetFont(), labelFontSize, ImVec2(labelPos.x + 0.65f * scale, labelPos.y), labelColor, room.label);
+						ImGui::PopID();
+					};
+
+					for (int pass = 0; pass < 2; ++pass) {
+						const bool wantFavorite = pass == 0;
+						for (const FixedRoomEntry& room : fixedRooms) {
+							if ((_userFavoriteFixedRooms.count(room.id) > 0) == wantFavorite) {
+								drawFixedRoom(room);
+							}
+						}
 					}
-					if (ImGui::Selectable(name.c_str(), selected, 0, ImVec2(0.0f, 30.0f * scale))) {
-						_selectedInstance = instance;
-						focusCameraOnInstanceCenter(*instance);
-					}
-					if (selected) {
-						ImGui::PopStyleColor(3);
-					}
-					ImGui::PopID();
 				}
+				ImGui::EndChild();
 			}
-			ImGui::EndChild();
+			else {
+
+				std::vector<GaussianInstance*> instances;
+				std::unordered_set<std::string> existingNames;
+				for (const auto& pair : _scene->getInstances()) {
+					if (pair.second) {
+						instances.push_back(pair.second.get());
+						existingNames.insert(pair.first);
+					}
+				}
+
+				for (auto it = _userFavoriteInstances.begin(); it != _userFavoriteInstances.end();) {
+					if (existingNames.count(*it) == 0) {
+						it = _userFavoriteInstances.erase(it);
+					}
+					else {
+						++it;
+					}
+				}
+
+				std::sort(instances.begin(), instances.end(), [this](const GaussianInstance* lhs, const GaussianInstance* rhs) {
+					const bool lhsFavorite = _userFavoriteInstances.count(lhs->getName()) > 0;
+					const bool rhsFavorite = _userFavoriteInstances.count(rhs->getName()) > 0;
+					if (lhsFavorite != rhsFavorite) {
+						return lhsFavorite;
+					}
+					return lhs->getName() < rhs->getName();
+				});
+
+				const float listHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y);
+				if (ImGui::BeginChild("UserInstanceListScroll", ImVec2(0.0f, listHeight), false)) {
+					if (instances.empty()) {
+						ImGui::TextDisabled("No instances");
+					}
+					for (GaussianInstance* instance : instances) {
+						if (!instance) {
+							continue;
+						}
+
+						const std::string& name = instance->getName();
+						const bool favorite = _userFavoriteInstances.count(name) > 0;
+						const bool selected = _selectedInstance == instance;
+						ImGui::PushID(name.c_str());
+						if (drawUserStarButton("##InstanceFavorite", favorite, 30.0f * scale, scale)) {
+							if (favorite) {
+								_userFavoriteInstances.erase(name);
+							}
+							else {
+								_userFavoriteInstances.insert(name);
+							}
+						}
+						ImGui::SameLine();
+
+						if (selected) {
+							ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.86f, 0.95f, 1.0f, 1.0f));
+							ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.82f, 0.93f, 1.0f, 1.0f));
+							ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.76f, 0.89f, 1.0f, 1.0f));
+						}
+						if (ImGui::Selectable(name.c_str(), selected, 0, ImVec2(0.0f, 30.0f * scale))) {
+							_selectedInstance = instance;
+							focusCameraOnInstanceCenter(*instance);
+						}
+						if (selected) {
+							ImGui::PopStyleColor(3);
+						}
+						ImGui::PopID();
+					}
+				}
+				ImGui::EndChild();
+			}
+
+			ImGuiIO& io = ImGui::GetIO();
+			const ImVec2 windowPos = ImGui::GetWindowPos();
+			const ImVec2 windowSize = ImGui::GetWindowSize();
+			const float handleSize = 10.0f * scale;
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			const ImU32 handleColor = IM_COL32(100, 116, 139, 130);
+			const ImU32 handleHoverColor = IM_COL32(14, 165, 233, 210);
+
+			ImGui::SetCursorScreenPos(ImVec2(windowPos.x, windowPos.y + handleSize));
+			ImGui::InvisibleButton("##UserInstancePanelResizeWidth", ImVec2(handleSize, std::max(1.0f, windowSize.y - handleSize * 2.0f)));
+			const bool widthHandleHovered = ImGui::IsItemHovered();
+			const bool widthHandleActive = ImGui::IsItemActive();
+			if (widthHandleHovered || widthHandleActive) {
+				ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+			}
+			if (widthHandleActive) {
+				_userInstancePanelWidth = clampFloat(_userInstancePanelWidth - io.MouseDelta.x, minPanelWidth, maxPanelWidth);
+			}
+
+			ImGui::SetCursorScreenPos(ImVec2(windowPos.x + handleSize, windowPos.y + windowSize.y - handleSize));
+			ImGui::InvisibleButton("##UserInstancePanelResizeHeight", ImVec2(std::max(1.0f, windowSize.x - handleSize), handleSize));
+			const bool heightHandleHovered = ImGui::IsItemHovered();
+			const bool heightHandleActive = ImGui::IsItemActive();
+			if (heightHandleHovered || heightHandleActive) {
+				ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+			}
+			if (heightHandleActive) {
+				_userInstancePanelHeight = clampFloat(_userInstancePanelHeight + io.MouseDelta.y, minPanelHeight, maxPanelHeight);
+			}
+
+			ImGui::SetCursorScreenPos(ImVec2(windowPos.x, windowPos.y + windowSize.y - handleSize));
+			ImGui::InvisibleButton("##UserInstancePanelResizeCorner", ImVec2(handleSize, handleSize));
+			const bool cornerHandleHovered = ImGui::IsItemHovered();
+			const bool cornerHandleActive = ImGui::IsItemActive();
+			if (cornerHandleHovered || cornerHandleActive) {
+				ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNESW);
+			}
+			if (cornerHandleActive) {
+				_userInstancePanelWidth = clampFloat(_userInstancePanelWidth - io.MouseDelta.x, minPanelWidth, maxPanelWidth);
+				_userInstancePanelHeight = clampFloat(_userInstancePanelHeight + io.MouseDelta.y, minPanelHeight, maxPanelHeight);
+			}
+
+			const ImU32 activeHandleColor = (widthHandleHovered || widthHandleActive || heightHandleHovered || heightHandleActive || cornerHandleHovered || cornerHandleActive)
+				? handleHoverColor
+				: handleColor;
+			drawList->AddLine(
+				ImVec2(windowPos.x + handleSize * 0.45f, windowPos.y + 22.0f * scale),
+				ImVec2(windowPos.x + handleSize * 0.45f, windowPos.y + windowSize.y - 22.0f * scale),
+				activeHandleColor,
+				1.2f * scale);
+			drawList->AddLine(
+				ImVec2(windowPos.x + 22.0f * scale, windowPos.y + windowSize.y - handleSize * 0.45f),
+				ImVec2(windowPos.x + windowSize.x - 22.0f * scale, windowPos.y + windowSize.y - handleSize * 0.45f),
+				activeHandleColor,
+				1.2f * scale);
 		}
 		ImGui::End();
 		ImGui::PopStyleColor(2);
@@ -1635,7 +1853,7 @@ namespace sibr {
 
 		Vector2f moveVector(0.0f, 0.0f);
 		if (ImGui::Begin("User Navigation Control", nullptr, flags)) {
-			ImGui::SetWindowFontScale(layout.resolutionScale);
+			ImGui::SetWindowFontScale(layout.fontScale);
 			const ImVec2 canvasPos = ImGui::GetCursorScreenPos();
 			const ImVec2 canvasSize(panelSize, panelSize);
 			ImGui::InvisibleButton("##UserNavigationDpad", canvasSize);
