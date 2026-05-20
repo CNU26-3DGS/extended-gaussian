@@ -8,7 +8,7 @@
 
 namespace {
 	constexpr float kDefaultRenderScale = 0.75f;
-	constexpr int kDefaultMaxSplatRadius = 96;
+	constexpr int kDefaultMaxSplatRadius = 0;
 
 	int clampShDegree(int degree)
 	{
