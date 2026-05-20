@@ -186,11 +186,12 @@ namespace sibr {
 		// Convert view and projection to target coordinate system
 		auto view_mat = eye.view();
 		auto proj_mat = eye.viewproj();
+		view_mat.row(0) *= -1;
 		view_mat.row(1) *= -1;
 		view_mat.row(2) *= -1;
-		// The CUDA rasterizer uses image-space Y increasing downward, so the
-		// projection handles the viewport flip. The final buffer copy must stay
-		// unflipped or camera up vectors end up compensating for rendering.
+		// Match the CUDA rasterizer camera basis here so manifest camera up
+		// vectors remain pure initial-view settings instead of render fixes.
+		proj_mat.row(0) *= -1;
 		proj_mat.row(1) *= -1;
 
 		// Compute additional view parameters

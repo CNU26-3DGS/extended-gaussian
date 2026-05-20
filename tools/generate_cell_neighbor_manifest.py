@@ -112,7 +112,7 @@ def main() -> None:
     parser.add_argument("dataset_root", type=Path, help="Root directory containing cfg_args and cells/")
     parser.add_argument("output", type=Path, help="Output manifest JSON path")
     parser.add_argument("--radius-xy", type=int, default=1, help="Neighbor radius in XY grid")
-    parser.add_argument("--radius-z", type=int, default=0, help="Neighbor radius across Z layers")
+    parser.add_argument("--radius-z", type=int, default=1, help="Neighbor radius across Z layers")
     parser.add_argument("--origin-y", choices=("min", "max"), default="min", help="How block rows map onto Y")
     parser.add_argument(
         "--warm-rule-assets-cpu",
