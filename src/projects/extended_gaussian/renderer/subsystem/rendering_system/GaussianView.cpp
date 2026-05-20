@@ -117,7 +117,7 @@ namespace sibr {
 		: owner(p_owner), ViewBase(render_w, render_h), render_scale(renderScale), max_splat_radius(maxSplatRadius) {
 
 		copyRenderer = new BufferCopyRenderer();
-		copyRenderer->flip() = true;
+		copyRenderer->flip() = false;
 		copyRenderer->width() = render_w;
 		copyRenderer->height() = render_h;
 
@@ -188,6 +188,9 @@ namespace sibr {
 		auto proj_mat = eye.viewproj();
 		view_mat.row(1) *= -1;
 		view_mat.row(2) *= -1;
+		// The CUDA rasterizer uses image-space Y increasing downward, so the
+		// projection handles the viewport flip. The final buffer copy must stay
+		// unflipped or camera up vectors end up compensating for rendering.
 		proj_mat.row(1) *= -1;
 
 		// Compute additional view parameters
