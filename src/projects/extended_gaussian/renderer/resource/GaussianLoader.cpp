@@ -4,9 +4,11 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <regex>
+#include <sstream>
 #include <vector>
 
 namespace fs = boost::filesystem;
@@ -30,6 +32,53 @@ namespace {
 
 		out = sibr::Vector3d(array[0].get<double>(), array[1].get<double>(), array[2].get<double>());
 		return isFinite(out);
+	}
+
+	int inferShDegreeFromPlyHeader(const std::string& plyPath)
+	{
+		std::ifstream infile(plyPath, std::ios_base::binary);
+		if (!infile.good()) {
+			return -1;
+		}
+
+		int dcCoefficients = 0;
+		int restCoefficients = 0;
+		std::string line;
+		while (std::getline(infile, line)) {
+			if (line == "end_header") {
+				break;
+			}
+			if (line.find("property") == std::string::npos) {
+				continue;
+			}
+			if (line.find(" f_dc_") != std::string::npos) {
+				++dcCoefficients;
+			}
+			else if (line.find(" f_rest_") != std::string::npos) {
+				++restCoefficients;
+			}
+		}
+
+		if (dcCoefficients != 3) {
+			return -1;
+		}
+
+		const int totalCoefficients = dcCoefficients + restCoefficients;
+		switch (totalCoefficients) {
+		case 3: return 0;
+		case 12: return 1;
+		case 27: return 2;
+		case 48: return 3;
+		default: return -1;
+		}
+	}
+
+	std::string lowercase(std::string value)
+	{
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+			return static_cast<char>(std::tolower(c));
+		});
+		return value;
 	}
 }
 
@@ -151,11 +200,54 @@ namespace sibr {
 		return true;
 	}
 
-	GaussianField::UPtr GaussianLoader::load(const std::string& modelPath) {
+	GaussianField::UPtr GaussianLoader::loadPlyFile(const std::string& plyPath)
+	{
+		fs::path p(plyPath);
+		if (!fs::exists(p) || !fs::is_regular_file(p)) {
+			SIBR_ERR << "PLY file does not exist: " << plyPath;
+			return nullptr;
+		}
+
+		const int runtime_sh_degree = inferShDegreeFromPlyHeader(plyPath);
+		if (runtime_sh_degree < 0) {
+			SIBR_ERR << "Unable to infer SH degree from PLY header: " << plyPath;
+			return nullptr;
+		}
+
 		auto field = std::make_unique<GaussianField>();
-		field->path = modelPath;
+		field->path = plyPath;
+		field->name = p.stem().string();
+		field->sh_degree = runtime_sh_degree;
+
+		bool success = false;
+		switch (runtime_sh_degree) {
+		case 0: success = loadPly<0>(plyPath.c_str(), *field); break;
+		case 1: success = loadPly<1>(plyPath.c_str(), *field); break;
+		case 2: success = loadPly<2>(plyPath.c_str(), *field); break;
+		case 3: success = loadPly<3>(plyPath.c_str(), *field); break;
+		default: return nullptr;
+		}
+
+		if (!success) {
+			return nullptr;
+		}
+
+		loadCameraFocus(p.parent_path(), *field);
+		return field;
+	}
+
+	GaussianField::UPtr GaussianLoader::load(const std::string& modelPath) {
+		if (modelPath.empty()) {
+			return nullptr;
+		}
 
 		fs::path p(modelPath);
+		if (fs::exists(p) && fs::is_regular_file(p) && lowercase(p.extension().string()) == ".ply") {
+			return loadPlyFile(modelPath);
+		}
+
+		auto field = std::make_unique<GaussianField>();
+		field->path = modelPath;
 
 		std::string folderName = p.filename().string();
 		if (folderName.empty()) {

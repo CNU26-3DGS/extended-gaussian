@@ -9,6 +9,9 @@
 #include <projects/extended_gaussian/renderer/resource/ResourceManager.hpp>
 #include <projects/extended_gaussian/renderer/subsystem/rendering_system/gpu_resource_manager/GPUResourceManager.hpp>
 
+#include <unordered_set>
+#include <vector>
+
 namespace sibr {
 	class RenderingSystem;
 
@@ -17,12 +20,17 @@ namespace sibr {
 	public:
 		SIBR_CLASS_PTR(ExtendedGaussianViewer);
 
+		enum class UIMode {
+			Developer,
+			User
+		};
+
 		/*
 		 * \brief Creates a MultiViewManager in a given OS window.
 		 * \param window The OS window to use.
 		 * \param resize Should the window be resized by the manager to maximize usable space.
 		 */
-		ExtendedGaussianViewer(sibr::Window& window, bool resize = true);
+		ExtendedGaussianViewer(sibr::Window& window, bool resize = true, UIMode uiMode = UIMode::Developer);
 
 		/**
 		 * \brief Update subviews and the MultiViewManager.
@@ -54,7 +62,21 @@ namespace sibr {
 		const RenderingSystem* getRenderingSystem() const;
 
 	private:
+		struct UserMapBlock {
+			std::string id;
+			Vector3f minBounds = Vector3f::Zero();
+			Vector3f maxBounds = Vector3f::Zero();
+			bool gpuResident = false;
+			bool hasInstance = false;
+		};
+
+		enum class UserMinimapMode {
+			FixedRooms,
+			InputBlocks
+		};
+
 		bool loadManifestFile(const std::string& path);
+		bool importUserPlyFile(const std::string& path);
 		size_t createManifestInstances(bool onlyMissing = true);
 		bool canFocusBlockCenter() const;
 		bool focusCameraOnBlockCenter();
@@ -72,6 +94,14 @@ namespace sibr {
 		static std::string formatMegabytes(size_t bytes);
 		void setMaxShDegree(int degree);
 
+		void onShowUserMinimap(sibr::Window& win);
+		void onShowUserStartupSelection(sibr::Window& win);
+		void onShowUserInstanceList(sibr::Window& win);
+		void onShowUserNavigationControl(sibr::Window& win);
+		std::vector<UserMapBlock> collectUserMapBlocks() const;
+		bool focusCameraOnUserBlock(const std::string& id);
+		void setUserCameraMoveVector(const Vector2f& moveVector);
+
 		void onShowScenePanel(sibr::Window& win);
 		void onShowResourceBrowser(sibr::Window& win);
 		void onShowCapturePanel(Window& win);
@@ -81,11 +111,18 @@ namespace sibr {
 
 		sibr::Window& _window; ///< The OS window.
 		sibr::FPSCounter _fpsCounter; ///< A FPS counter.
+		UIMode _uiMode = UIMode::Developer;
 		bool _showGUI = true; ///< Should the GUI be displayed.
 		bool _showScenePanel = false;
 		bool _showResourceBrowser = false;
 		bool _showCapturePanel = false;
 		bool _showCameraSpeedPannel = true;
+		bool _userMinimapExpanded = false;
+		UserMinimapMode _userMinimapMode = UserMinimapMode::FixedRooms;
+		std::string _userFixedMinimapSelectedId = "401";
+		bool _userStartupSelectionOpen = false;
+		std::string _userStartupSelectionStatus;
+		std::unordered_set<std::string> _userFavoriteInstances;
 
 		GaussianInstance* _selectedInstance = nullptr;
 		std::string _selectedField;

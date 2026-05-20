@@ -8,16 +8,56 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cuda_runtime.h>
 #include <iomanip>
+#include <limits>
 #include <sstream>
+#include <unordered_set>
 
 namespace sibr {
 	namespace {
 		int clampShDegree(int degree)
 		{
 			return std::max(0, std::min(3, degree));
+		}
+
+		float clampFloat(float value, float minimum, float maximum)
+		{
+			return std::max(minimum, std::min(maximum, value));
+		}
+
+		struct UserUILayout {
+			Vector2f winSize = Vector2f(1.0f, 1.0f);
+			float dpiScale = 1.0f;
+			float resolutionScale = 1.0f;
+			float scale = 1.0f;
+			float margin = 24.0f;
+		};
+
+		UserUILayout getUserUILayout(const Window& win)
+		{
+			UserUILayout layout;
+			layout.winSize = win.size().cast<float>();
+			layout.winSize.x() = std::max(1.0f, layout.winSize.x());
+			layout.winSize.y() = std::max(1.0f, layout.winSize.y());
+			layout.dpiScale = std::max(1.0f, ImGui::GetIO().FontGlobalScale);
+
+			const float baseWidth = 1280.0f * layout.dpiScale;
+			const float baseHeight = 800.0f * layout.dpiScale;
+			const float widthScale = layout.winSize.x() / baseWidth;
+			const float heightScale = layout.winSize.y() / baseHeight;
+			layout.resolutionScale = clampFloat(std::min(widthScale, heightScale), 0.72f, 1.45f);
+			layout.scale = layout.dpiScale * layout.resolutionScale;
+			layout.margin = 24.0f * layout.scale;
+			return layout;
+		}
+
+		float fitUserDimension(float preferred, float minimum, float available)
+		{
+			available = std::max(1.0f, available);
+			return std::min(std::max(preferred, minimum), available);
 		}
 	}
 
@@ -40,6 +80,15 @@ namespace sibr {
 
 		float customCameraSpeed = 10.0f;
 		float customRotSpeed = 10.0f;
+		sibr::Vector2f uiMoveVector = sibr::Vector2f(0.0f, 0.0f);
+
+		void setUiMoveVector(const sibr::Vector2f& moveVector) {
+			uiMoveVector = moveVector;
+			const float length = uiMoveVector.norm();
+			if (length > 1.0f) {
+				uiMoveVector /= length;
+			}
+		}
 
 		void update(const sibr::Input& input, const float deltaTime, const sibr::Viewport& viewport) override {
 
@@ -63,9 +112,12 @@ namespace sibr {
 			if (input.key().isActivated(sibr::Key::D)) pos += _myCam.right() * currentMoveSpeed;
 			if (input.key().isActivated(sibr::Key::E)) pos += _worldUp * currentMoveSpeed;
 			if (input.key().isActivated(sibr::Key::Q)) pos -= _worldUp * currentMoveSpeed;
+			pos += _myCam.right() * (uiMoveVector.x() * currentMoveSpeed);
+			pos += _myCam.dir() * (uiMoveVector.y() * currentMoveSpeed);
 
 			// 마우스 이동
-			if (input.mouseButton().isActivated(sibr::Mouse::Left)) {
+			const bool usingUiMove = uiMoveVector.squaredNorm() > 0.0001f;
+			if (!usingUiMove && input.mouseButton().isActivated(sibr::Mouse::Left)) {
 				float slideSens = (currentMoveSpeed * 0.01f); // 필요시 float 조절
 				sibr::Vector3f right = _myCam.right();
 				sibr::Vector3f up = _myCam.up();
@@ -74,7 +126,7 @@ namespace sibr {
 				_myCam.setLookAt(pos, pos + _myCam.dir(), _myCam.up());
 			}
 			// 마우스 회전
-			else if (input.mouseButton().isActivated(sibr::Mouse::Right)) {
+			else if (!usingUiMove && input.mouseButton().isActivated(sibr::Mouse::Right)) {
 				sibr::Vector3f forward = _myCam.dir();
 				sibr::Vector3f right = _myCam.right();
 				sibr::Vector3f up = _myCam.up();
@@ -99,8 +151,8 @@ namespace sibr {
 		}
 	};
 
-	ExtendedGaussianViewer::ExtendedGaussianViewer(Window& window, bool resize)
-		: _window(window), _fpsCounter(false)
+	ExtendedGaussianViewer::ExtendedGaussianViewer(Window& window, bool resize, UIMode uiMode)
+		: _window(window), _fpsCounter(false), _uiMode(uiMode)
 	{
 		_enableGUI = window.isGUIEnabled();
 
@@ -123,6 +175,13 @@ namespace sibr {
 		{
 			ImGui::GetStyle().WindowBorderSize = 0.0;
 		}
+		if (_uiMode == UIMode::User) {
+			_showSubViewsGui = false;
+			_showScenePanel = false;
+			_showResourceBrowser = false;
+			_showCapturePanel = false;
+			_showCameraSpeedPannel = false;
+		}
 
 		_maxShDegree = clampShDegree(getCommandLineArgs().get<int>("max-sh-degree", 1));
 		CommandLineArgs::getGlobal().registerCommand(
@@ -140,6 +199,9 @@ namespace sibr {
 		const std::string manifestPath = getCommandLineArgs().get<std::string>("manifest", "");
 		if (!manifestPath.empty()) {
 			loadManifestFile(manifestPath);
+		}
+		if (_uiMode == UIMode::User) {
+			_userStartupSelectionOpen = manifestPath.empty() || _manifestStore.empty();
 		}
 
 		_subsystem[CAPTURE_SYSTEM] = std::make_unique<CaptureSystem>();
@@ -176,7 +238,9 @@ namespace sibr {
 		glClear(GL_COLOR_BUFFER_BIT);
 		glClearColor(1.f, 1.f, 1.f, 1.f);
 
-		onGui(win);
+		if (_uiMode == UIMode::Developer) {
+			onGui(win);
+		}
 
 		RenderingSystem* renderingSystem = getRenderingSystem();
 		if (renderingSystem) {
@@ -195,14 +259,31 @@ namespace sibr {
 		}
 
 		MultiViewBase::onRender(win);
+		if (_uiMode == UIMode::User && _showGUI) {
+			if (_userStartupSelectionOpen) {
+				onShowUserStartupSelection(win);
+				setUserCameraMoveVector(Vector2f(0.0f, 0.0f));
+			}
+			else {
+				onShowUserMinimap(win);
+				onShowUserInstanceList(win);
+				onShowUserNavigationControl(win);
+			}
+		}
+		else if (_uiMode == UIMode::User) {
+			setUserCameraMoveVector(Vector2f(0.0f, 0.0f));
+		}
 		++_frameIndex;
 
-		_fpsCounter.update(_enableGUI && _showGUI);
+		_fpsCounter.update(_enableGUI && _showGUI && _uiMode == UIMode::Developer);
 	}
 
 	void ExtendedGaussianViewer::onGui(Window& win)
 	{
 		MultiViewBase::onGui(win);
+		if (_uiMode == UIMode::User) {
+			return;
+		}
 
 		if (_showCameraSpeedPannel) {
 			ImGui::Begin("Camera Speed", &_showCameraSpeedPannel);
@@ -506,8 +587,70 @@ namespace sibr {
 			}
 		}
 
-		focusCameraOnManifestBounds();
+		bool focused = false;
+		const auto& initialFocusAsset = _manifestStore.settings().initial_focus_asset;
+		if (!initialFocusAsset.empty()) {
+			focused = focusCameraOnAssetCenter(initialFocusAsset);
+			if (!focused) {
+				SIBR_WRG << "Manifest initial_focus_asset '" << initialFocusAsset
+					<< "' could not be focused. Falling back to manifest bounds." << std::endl;
+			}
+		}
+		if (!focused) {
+			focusCameraOnManifestBounds();
+		}
 		_resourceBrowserStatus = "Manifest loaded: " + std::to_string(_manifestStore.assets().size()) + " asset(s).";
+		return true;
+	}
+
+	bool ExtendedGaussianViewer::importUserPlyFile(const std::string& path)
+	{
+		if (!_resourceManager || !_scene) {
+			_userStartupSelectionStatus = "Viewer is not ready.";
+			return false;
+		}
+
+		auto field = GaussianLoader::loadPlyFile(path);
+		if (!field) {
+			_userStartupSelectionStatus = "PLY load failed.";
+			return false;
+		}
+
+		std::string baseName = field->name.empty() ? "ImportedPLY" : field->name;
+		std::string assetId = baseName;
+		int suffix = 1;
+		while (_resourceManager->hasAsset(assetId)) {
+			assetId = baseName + "_" + std::to_string(suffix++);
+		}
+		field->name = assetId;
+
+		if (!_resourceManager->addField(std::move(field))) {
+			_userStartupSelectionStatus = "Failed to register PLY asset.";
+			return false;
+		}
+
+		if (auto* renderingSystem = getRenderingSystem()) {
+			renderingSystem->setManifest(nullptr);
+		}
+		_manifestStore.clear();
+		_loadedManifestPath.clear();
+		_currentPhase.clear();
+
+		std::string instanceName = assetId;
+		suffix = 1;
+		while (_scene->getInstance(instanceName) != nullptr) {
+			instanceName = assetId + "_" + std::to_string(suffix++);
+		}
+
+		_selectedInstance = _scene->createInstance(instanceName, assetId);
+		if (!_selectedInstance) {
+			_userStartupSelectionStatus = "Failed to create PLY instance.";
+			return false;
+		}
+
+		_subsystem[RENDERING_SYSTEM]->onInstanceCreated(*_selectedInstance);
+		focusCameraOnInstanceCenter(*_selectedInstance);
+		_resourceBrowserStatus = "PLY loaded: " + assetId;
 		return true;
 	}
 
@@ -643,7 +786,11 @@ namespace sibr {
 		eye.y() = std::min(maxBounds.y() - xyInset, std::max(minBounds.y() + xyInset, eye.y()));
 
 		InputCamera focusCamera = viewIt->second.cam;
-		focusCamera.setLookAt(eye, target, Vector3f(0.0f, 1.0f, 0.0f));
+		Vector3f cameraUp = _manifestStore.settings().initial_camera_up;
+		if (cameraUp.squaredNorm() < 1e-6f) {
+			cameraUp = Vector3f(0.0f, 1.0f, 0.0f);
+		}
+		focusCamera.setLookAt(eye, target, cameraUp.normalized());
 		focusCamera.znear(0.01f);
 		focusCamera.zfar(std::max(1000.0f, maxExtent * 20.0f));
 		if (customHandler) {
@@ -859,6 +1006,699 @@ namespace sibr {
 		if (RenderingSystem* renderingSystem = getRenderingSystem()) {
 			renderingSystem->setMaxShDegree(_maxShDegree);
 		}
+	}
+
+	std::vector<ExtendedGaussianViewer::UserMapBlock> ExtendedGaussianViewer::collectUserMapBlocks() const
+	{
+		std::unordered_set<AssetId> residentAssetIds;
+		for (const auto& status : GPUResourceManager::getInstance().snapshot()) {
+			if (status.resident) {
+				residentAssetIds.insert(status.id);
+			}
+		}
+
+		std::vector<UserMapBlock> blocks;
+		std::unordered_set<AssetId> instanceAssetIds;
+
+		if (_scene) {
+			std::vector<const GaussianInstance*> instances;
+			for (const auto& pair : _scene->getInstances()) {
+				if (pair.second) {
+					instances.push_back(pair.second.get());
+				}
+			}
+			std::sort(instances.begin(), instances.end(), [](const GaussianInstance* lhs, const GaussianInstance* rhs) {
+				return lhs->getName() < rhs->getName();
+			});
+
+			for (const GaussianInstance* instance : instances) {
+				if (!instance || !instance->hasAsset()) {
+					continue;
+				}
+
+				Vector3f minBounds = Vector3f::Zero();
+				Vector3f maxBounds = Vector3f::Zero();
+				if (!getInstanceWorldBounds(*instance, minBounds, maxBounds)) {
+					continue;
+				}
+
+				UserMapBlock block;
+				block.id = instance->getName();
+				block.minBounds = minBounds;
+				block.maxBounds = maxBounds;
+				block.gpuResident = residentAssetIds.count(instance->getAssetId()) > 0;
+				block.hasInstance = true;
+				blocks.push_back(block);
+				instanceAssetIds.insert(instance->getAssetId());
+			}
+		}
+
+		if (_resourceManager) {
+			auto assetIds = _resourceManager->listAssetIds();
+			std::sort(assetIds.begin(), assetIds.end());
+			for (const auto& assetId : assetIds) {
+				if (instanceAssetIds.count(assetId) > 0) {
+					continue;
+				}
+
+				AssetDescriptor descriptor;
+				if (!_resourceManager->getAssetDescriptor(assetId, descriptor)) {
+					continue;
+				}
+
+				UserMapBlock block;
+				block.id = assetId;
+				block.minBounds = descriptor.bounds_min;
+				block.maxBounds = descriptor.bounds_max;
+				block.gpuResident = residentAssetIds.count(assetId) > 0;
+				block.hasInstance = false;
+				blocks.push_back(block);
+			}
+		}
+
+		return blocks;
+	}
+
+	bool ExtendedGaussianViewer::focusCameraOnUserBlock(const std::string& id)
+	{
+		if (id.empty()) {
+			return false;
+		}
+
+		if (_scene) {
+			if (GaussianInstance* instance = _scene->getInstance(id)) {
+				_selectedInstance = instance;
+				return focusCameraOnInstanceCenter(*instance);
+			}
+
+			for (const auto& pair : _scene->getInstances()) {
+				GaussianInstance* instance = pair.second.get();
+				if (instance && instance->getAssetId() == id) {
+					_selectedInstance = instance;
+					return focusCameraOnInstanceCenter(*instance);
+				}
+			}
+		}
+
+		return focusCameraOnAssetCenter(id);
+	}
+
+	void ExtendedGaussianViewer::onShowUserStartupSelection(Window& win)
+	{
+		const UserUILayout layout = getUserUILayout(win);
+		const float scale = layout.scale;
+		const float modalWidth = fitUserDimension(420.0f * scale, 300.0f * layout.dpiScale, layout.winSize.x() - 2.0f * layout.margin);
+		const float modalHeight = fitUserDimension(220.0f * scale, 190.0f * layout.dpiScale, layout.winSize.y() - 2.0f * layout.margin);
+		const ImVec2 modalSize(modalWidth, modalHeight);
+		ImGui::SetNextWindowPos(ImVec2(layout.winSize.x() * 0.5f, layout.winSize.y() * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+		ImGui::SetNextWindowSize(modalSize, ImGuiCond_Always);
+		ImGui::OpenPopup("데이터 선택");
+
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * scale);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0f * scale, 16.0f * scale));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * scale);
+		ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(1.00f, 1.00f, 1.00f, 0.98f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.73f, 0.78f, 0.86f, 0.80f));
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.06f, 0.09f, 0.16f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.56f, 0.79f, 0.98f, 0.95f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.62f, 0.84f, 0.99f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.49f, 0.73f, 0.95f, 1.00f));
+
+		if (ImGui::BeginPopupModal("데이터 선택", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
+			ImGui::SetWindowFontScale(layout.resolutionScale);
+			ImGui::TextUnformatted("시작할 데이터를 선택하세요");
+			ImGui::TextDisabled("manifest JSON 또는 단일 PLY 파일을 불러옵니다.");
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			if (ImGui::Button("Manifest 선택", ImVec2(-1.0f, 34.0f * scale))) {
+				std::string manifestPath;
+				if (showFilePicker(manifestPath, FilePickerMode::Default, "", "json")) {
+					if (loadManifestFile(manifestPath)) {
+						_userStartupSelectionOpen = false;
+						_userStartupSelectionStatus.clear();
+						ImGui::CloseCurrentPopup();
+					}
+					else {
+						_userStartupSelectionStatus = "Manifest load failed.";
+					}
+				}
+			}
+
+			if (ImGui::Button("PLY 선택", ImVec2(-1.0f, 34.0f * scale))) {
+				std::string plyPath;
+				if (showFilePicker(plyPath, FilePickerMode::Default, "", "ply")) {
+					if (importUserPlyFile(plyPath)) {
+						_userStartupSelectionOpen = false;
+						_userStartupSelectionStatus.clear();
+						ImGui::CloseCurrentPopup();
+					}
+				}
+			}
+
+			if (!_userStartupSelectionStatus.empty()) {
+				ImGui::Spacing();
+				ImGui::TextColored(ImVec4(0.82f, 0.18f, 0.15f, 1.00f), "%s", _userStartupSelectionStatus.c_str());
+			}
+
+			ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 42.0f * scale);
+			if (ImGui::Button("나중에 선택", ImVec2(-1.0f, 0.0f))) {
+				_userStartupSelectionOpen = false;
+				_userStartupSelectionStatus.clear();
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
+
+		ImGui::PopStyleColor(6);
+		ImGui::PopStyleVar(3);
+	}
+
+	void ExtendedGaussianViewer::onShowUserMinimap(Window& win)
+	{
+		const UserUILayout layout = getUserUILayout(win);
+		const float scale = layout.scale;
+		const bool fixedRoomMap = _userMinimapMode == UserMinimapMode::FixedRooms;
+		const float controlWidth = 86.0f * scale;
+		const float minMapWidth = 220.0f * layout.dpiScale;
+		const float maxMapWidth = std::max(minMapWidth, layout.winSize.x() - controlWidth - 3.0f * layout.margin);
+		const float maxMapHeight = std::max(140.0f * layout.dpiScale, layout.winSize.y() - 2.0f * layout.margin);
+
+		float mapWidth = 0.0f;
+		float mapHeight = 0.0f;
+		if (fixedRoomMap) {
+			mapWidth = fitUserDimension((_userMinimapExpanded ? 584.0f : 300.0f) * scale, minMapWidth, maxMapWidth);
+			mapHeight = fitUserDimension(170.0f * scale, 120.0f * layout.dpiScale, maxMapHeight);
+		}
+		else {
+			const float compactMapWidth = 320.0f * scale;
+			const float compactMapHeight = 180.0f * scale;
+			const float expandedMapWidth = std::min(std::max(420.0f * scale, layout.winSize.x() - 96.0f * scale), 760.0f * scale);
+			const float expandedMapHeight = std::min(std::max(260.0f * scale, layout.winSize.y() * 0.52f), 520.0f * scale);
+			mapWidth = fitUserDimension(_userMinimapExpanded ? expandedMapWidth : compactMapWidth, minMapWidth, maxMapWidth);
+			mapHeight = fitUserDimension(_userMinimapExpanded ? expandedMapHeight : compactMapHeight, 130.0f * layout.dpiScale, maxMapHeight);
+		}
+
+		const float windowWidth = mapWidth + controlWidth + 34.0f * scale;
+		const float windowHeight = std::max(mapHeight + 20.0f * scale, 102.0f * scale);
+
+		ImGui::SetNextWindowPos(ImVec2(layout.margin, layout.margin), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * scale);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.97f, 0.98f, 0.99f, 0.86f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.73f, 0.78f, 0.86f, 0.70f));
+
+		const ImGuiWindowFlags flags =
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoScrollbar |
+			ImGuiWindowFlags_NoSavedSettings;
+
+		if (ImGui::Begin("User Minimap", nullptr, flags)) {
+			ImGui::SetWindowFontScale(layout.resolutionScale);
+			const ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+			const ImVec2 canvasSize(mapWidth, mapHeight);
+			ImGui::InvisibleButton("##UserMinimapCanvas", canvasSize);
+			const bool canvasHovered = ImGui::IsItemHovered();
+			const ImVec2 mousePos = ImGui::GetIO().MousePos;
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddRectFilled(canvasPos, ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y), IM_COL32(248, 250, 252, 235), 6.0f * scale);
+			drawList->AddRect(canvasPos, ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y), IM_COL32(148, 163, 184, 180), 6.0f * scale, 0, 1.0f * scale);
+
+			std::string clickedBlock;
+			std::string clickedBlockFallback;
+			if (fixedRoomMap) {
+				struct FixedRoomBlock {
+					const char* id;
+					const char* label;
+					float x;
+					float y;
+					float w;
+					float h;
+					bool office;
+					float textScale;
+				};
+				static const std::array<FixedRoomBlock, 16> fixedBlocks = { {
+					{ "401", "401", 0.0f, 0.0f, 84.0f, 58.0f, false, 1.0f },
+					{ "지란지교", "지란지교", 84.0f, 0.0f, 70.0f, 58.0f, false, 0.82f },
+					{ "404-1", "404", 154.0f, 0.0f, 70.0f, 58.0f, false, 1.0f },
+					{ "405", "405", 224.0f, 0.0f, 62.0f, 58.0f, false, 1.0f },
+					{ "406", "406", 350.0f, 0.0f, 76.0f, 45.0f, true, 1.0f },
+					{ "407", "407", 426.0f, 0.0f, 36.0f, 45.0f, true, 0.9f },
+					{ "사무실/부속실", "사무실/부속실", 462.0f, 0.0f, 58.0f, 45.0f, true, 0.58f },
+					{ "408", "408", 520.0f, 0.0f, 40.0f, 45.0f, true, 0.9f },
+					{ "416", "416", 0.0f, 88.0f, 78.0f, 62.0f, false, 1.0f },
+					{ "415", "415", 78.0f, 88.0f, 78.0f, 62.0f, false, 1.0f },
+					{ "414", "414", 156.0f, 88.0f, 78.0f, 62.0f, false, 1.0f },
+					{ "413", "413", 234.0f, 88.0f, 66.0f, 62.0f, false, 1.0f },
+					{ "412", "412", 300.0f, 88.0f, 62.0f, 62.0f, false, 1.0f },
+					{ "411", "411", 362.0f, 88.0f, 68.0f, 62.0f, false, 1.0f },
+					{ "410", "410", 430.0f, 88.0f, 82.0f, 62.0f, false, 1.0f },
+					{ "409", "409", 512.0f, 88.0f, 48.0f, 62.0f, false, 1.0f },
+				} };
+
+				const std::string selectedName = _selectedInstance ? _selectedInstance->getName() : _userFixedMinimapSelectedId;
+				const FixedRoomBlock* selectedBlock = nullptr;
+				for (const FixedRoomBlock& block : fixedBlocks) {
+					if (selectedName == block.id || selectedName == block.label) {
+						selectedBlock = &block;
+						break;
+					}
+				}
+				if (!selectedBlock) {
+					for (const FixedRoomBlock& block : fixedBlocks) {
+						if (_userFixedMinimapSelectedId == block.id || _userFixedMinimapSelectedId == block.label) {
+							selectedBlock = &block;
+							break;
+						}
+					}
+				}
+				if (!selectedBlock) {
+					selectedBlock = &fixedBlocks.front();
+				}
+
+				const ImVec2 selectedRoomCenter(
+					selectedBlock->x + selectedBlock->w * 0.5f,
+					selectedBlock->y + selectedBlock->h * 0.5f);
+				const ImVec2 mapCenter(canvasPos.x + canvasSize.x * 0.5f, canvasPos.y + canvasSize.y * 0.5f);
+				float planScale = std::min(scale, std::max(0.1f, (canvasSize.y - 20.0f * layout.dpiScale) / 150.0f));
+				if (_userMinimapExpanded) {
+					planScale = std::min(planScale, std::max(0.1f, (canvasSize.x - 24.0f * layout.dpiScale) / 560.0f));
+				}
+				const ImVec2 planMin = _userMinimapExpanded
+					? ImVec2(canvasPos.x + (canvasSize.x - 560.0f * planScale) * 0.5f, canvasPos.y + (canvasSize.y - 150.0f * planScale) * 0.5f)
+					: ImVec2(mapCenter.x - selectedRoomCenter.x * planScale, mapCenter.y - selectedRoomCenter.y * planScale);
+
+				const ImU32 roomFill = IM_COL32(229, 231, 235, 205);
+				const ImU32 activeRoomFill = IM_COL32(255, 255, 255, 245);
+				const ImU32 officeFill = IM_COL32(250, 232, 255, 210);
+				const ImU32 roomBorder = IM_COL32(100, 116, 139, 210);
+				const ImU32 activeBorder = IM_COL32(143, 202, 249, 255);
+				const ImU32 accentColor = IM_COL32(56, 189, 248, 255);
+				const ImU32 roomText = IM_COL32(15, 23, 42, 230);
+
+				drawList->PushClipRect(canvasPos, ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y), true);
+				const bool corridorHovered =
+					canvasHovered &&
+					(((mousePos.x >= planMin.x + 0.0f * planScale && mousePos.x <= planMin.x + 560.0f * planScale) && (mousePos.y >= planMin.y + 58.0f * planScale && mousePos.y <= planMin.y + 88.0f * planScale)) ||
+						((mousePos.x >= planMin.x + 286.0f * planScale && mousePos.x <= planMin.x + 350.0f * planScale) && (mousePos.y >= planMin.y + 0.0f * planScale && mousePos.y <= planMin.y + 88.0f * planScale)) ||
+						((mousePos.x >= planMin.x + 350.0f * planScale && mousePos.x <= planMin.x + 560.0f * planScale) && (mousePos.y >= planMin.y + 45.0f * planScale && mousePos.y <= planMin.y + 88.0f * planScale)));
+				drawList->AddRectFilled(ImVec2(planMin.x + 0.0f * planScale, planMin.y + 58.0f * planScale), ImVec2(planMin.x + 560.0f * planScale, planMin.y + 88.0f * planScale), roomFill, 2.0f * planScale);
+				drawList->AddRectFilled(ImVec2(planMin.x + 286.0f * planScale, planMin.y + 0.0f * planScale), ImVec2(planMin.x + 350.0f * planScale, planMin.y + 88.0f * planScale), roomFill, 2.0f * planScale);
+				drawList->AddRectFilled(ImVec2(planMin.x + 350.0f * planScale, planMin.y + 45.0f * planScale), ImVec2(planMin.x + 560.0f * planScale, planMin.y + 88.0f * planScale), roomFill, 2.0f * planScale);
+				ImVec2 corridorOutline[] = {
+					ImVec2(planMin.x + 0.0f * planScale, planMin.y + 58.0f * planScale),
+					ImVec2(planMin.x + 286.0f * planScale, planMin.y + 58.0f * planScale),
+					ImVec2(planMin.x + 286.0f * planScale, planMin.y + 0.0f * planScale),
+					ImVec2(planMin.x + 350.0f * planScale, planMin.y + 0.0f * planScale),
+					ImVec2(planMin.x + 350.0f * planScale, planMin.y + 45.0f * planScale),
+					ImVec2(planMin.x + 560.0f * planScale, planMin.y + 45.0f * planScale),
+					ImVec2(planMin.x + 560.0f * planScale, planMin.y + 88.0f * planScale),
+					ImVec2(planMin.x + 0.0f * planScale, planMin.y + 88.0f * planScale),
+				};
+				drawList->AddPolyline(corridorOutline, IM_ARRAYSIZE(corridorOutline), corridorHovered ? accentColor : roomBorder, true, 1.0f * planScale);
+
+				for (const FixedRoomBlock& block : fixedBlocks) {
+					const ImVec2 a(planMin.x + block.x * planScale, planMin.y + block.y * planScale);
+					const ImVec2 b(planMin.x + (block.x + block.w) * planScale, planMin.y + (block.y + block.h) * planScale);
+					const bool hovered = canvasHovered
+						&& mousePos.x >= a.x && mousePos.x <= b.x
+						&& mousePos.y >= a.y && mousePos.y <= b.y;
+					if (hovered && ImGui::IsMouseClicked(0)) {
+						clickedBlock = block.id;
+						clickedBlockFallback = block.label;
+					}
+
+					const bool selected = selectedName == block.id || selectedName == block.label;
+					const ImU32 fill = selected ? activeRoomFill : (block.office ? officeFill : roomFill);
+					const ImU32 border = selected ? activeBorder : (hovered ? accentColor : roomBorder);
+					drawList->AddRectFilled(a, b, fill, 2.0f * planScale);
+					drawList->AddRect(a, b, border, 2.0f * planScale, 0, selected ? 2.0f * planScale : 1.0f * planScale);
+
+					const float labelScale = block.textScale * std::min(1.0f, planScale / std::max(0.001f, scale));
+					ImVec2 textSize = ImGui::CalcTextSize(block.label);
+					textSize.x *= labelScale;
+					textSize.y *= labelScale;
+					const ImVec2 textPos((a.x + b.x - textSize.x) * 0.5f, (a.y + b.y - textSize.y) * 0.5f);
+					if (labelScale != 1.0f) {
+						drawList->AddText(nullptr, ImGui::GetFontSize() * labelScale, textPos, roomText, block.label);
+					}
+					else {
+						drawList->AddText(textPos, roomText, block.label);
+					}
+				}
+				drawList->PopClipRect();
+			}
+			else {
+				const std::vector<UserMapBlock> allBlocks = collectUserMapBlocks();
+				std::vector<const UserMapBlock*> visibleBlocks;
+				for (const auto& block : allBlocks) {
+					const bool selected = _selectedInstance && block.id == _selectedInstance->getName();
+					if (_userMinimapExpanded || block.gpuResident || selected) {
+						visibleBlocks.push_back(&block);
+					}
+				}
+				if (visibleBlocks.empty()) {
+					for (const auto& block : allBlocks) {
+						visibleBlocks.push_back(&block);
+					}
+				}
+
+				if (visibleBlocks.empty()) {
+					const char* emptyText = "No blocks";
+					const ImVec2 textSize = ImGui::CalcTextSize(emptyText);
+					drawList->AddText(
+						ImVec2(canvasPos.x + (canvasSize.x - textSize.x) * 0.5f, canvasPos.y + (canvasSize.y - textSize.y) * 0.5f),
+						IM_COL32(100, 116, 139, 255),
+						emptyText);
+				}
+				else {
+					float minX = std::numeric_limits<float>::max();
+					float minY = std::numeric_limits<float>::max();
+					float maxX = -std::numeric_limits<float>::max();
+					float maxY = -std::numeric_limits<float>::max();
+					for (const UserMapBlock* block : visibleBlocks) {
+						minX = std::min(minX, block->minBounds.x());
+						minY = std::min(minY, block->minBounds.y());
+						maxX = std::max(maxX, block->maxBounds.x());
+						maxY = std::max(maxY, block->maxBounds.y());
+					}
+
+					const float extentX = std::max(1.0f, maxX - minX);
+					const float extentY = std::max(1.0f, maxY - minY);
+					const float worldPadding = 0.08f * std::max(extentX, extentY);
+					minX -= worldPadding;
+					minY -= worldPadding;
+					maxX += worldPadding;
+					maxY += worldPadding;
+
+					const float usableWidth = std::max(1.0f, canvasSize.x - 16.0f * scale);
+					const float usableHeight = std::max(1.0f, canvasSize.y - 16.0f * scale);
+					const float worldWidth = std::max(1.0f, maxX - minX);
+					const float worldHeight = std::max(1.0f, maxY - minY);
+					const float mapScale = std::min(usableWidth / worldWidth, usableHeight / worldHeight);
+					const float offsetX = (canvasSize.x - worldWidth * mapScale) * 0.5f;
+					const float offsetY = (canvasSize.y - worldHeight * mapScale) * 0.5f;
+
+					auto worldToScreen = [&](float x, float y) {
+						return ImVec2(
+							canvasPos.x + offsetX + (x - minX) * mapScale,
+							canvasPos.y + canvasSize.y - offsetY - (y - minY) * mapScale);
+					};
+
+					drawList->PushClipRect(canvasPos, ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y), true);
+					for (const UserMapBlock* block : visibleBlocks) {
+						ImVec2 a = worldToScreen(block->minBounds.x(), block->maxBounds.y());
+						ImVec2 b = worldToScreen(block->maxBounds.x(), block->minBounds.y());
+						if (b.x - a.x < 22.0f * scale) {
+							const float center = (a.x + b.x) * 0.5f;
+							a.x = center - 11.0f * scale;
+							b.x = center + 11.0f * scale;
+						}
+						if (b.y - a.y < 18.0f * scale) {
+							const float center = (a.y + b.y) * 0.5f;
+							a.y = center - 9.0f * scale;
+							b.y = center + 9.0f * scale;
+						}
+
+						const bool selected = _selectedInstance && block->id == _selectedInstance->getName();
+						const bool hovered = canvasHovered
+							&& mousePos.x >= a.x && mousePos.x <= b.x
+							&& mousePos.y >= a.y && mousePos.y <= b.y;
+						if (hovered && ImGui::IsMouseClicked(0)) {
+							clickedBlock = block->id;
+						}
+
+						const ImU32 fill = selected
+							? IM_COL32(255, 255, 255, 245)
+							: (block->gpuResident ? IM_COL32(219, 242, 255, 235) : IM_COL32(229, 231, 235, 215));
+						const ImU32 border = selected
+							? IM_COL32(14, 165, 233, 255)
+							: (hovered ? IM_COL32(56, 189, 248, 255) : IM_COL32(100, 116, 139, 210));
+						drawList->AddRectFilled(a, b, fill, 3.0f * scale);
+						drawList->AddRect(a, b, border, 3.0f * scale, 0, selected ? 2.0f * scale : 1.0f * scale);
+
+						const ImVec2 textSize = ImGui::CalcTextSize(block->id.c_str());
+						if (textSize.x + 8.0f * scale < b.x - a.x && textSize.y < b.y - a.y) {
+							drawList->AddText(
+								ImVec2(a.x + (b.x - a.x - textSize.x) * 0.5f, a.y + (b.y - a.y - textSize.y) * 0.5f),
+								IM_COL32(15, 23, 42, 230),
+								block->id.c_str());
+						}
+					}
+					drawList->PopClipRect();
+				}
+			}
+
+			if (!clickedBlock.empty()) {
+				if (fixedRoomMap) {
+					_userFixedMinimapSelectedId = clickedBlock;
+					if (!focusCameraOnUserBlock(clickedBlock) && clickedBlockFallback != clickedBlock) {
+						focusCameraOnUserBlock(clickedBlockFallback);
+					}
+				}
+				else {
+					focusCameraOnUserBlock(clickedBlock);
+				}
+			}
+
+			ImGui::SameLine(0.0f, 8.0f * scale);
+			ImGui::BeginGroup();
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.56f, 0.79f, 0.98f, 0.95f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.62f, 0.84f, 0.99f, 1.00f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.49f, 0.73f, 0.95f, 1.00f));
+			if (ImGui::Button(_userMinimapExpanded ? "Focus" : "Full", ImVec2(68.0f * scale, 0.0f))) {
+				_userMinimapExpanded = !_userMinimapExpanded;
+			}
+			if (ImGui::Button(fixedRoomMap ? "입력" : "고정", ImVec2(68.0f * scale, 0.0f))) {
+				_userMinimapMode = fixedRoomMap ? UserMinimapMode::InputBlocks : UserMinimapMode::FixedRooms;
+			}
+			ImGui::PopStyleColor(3);
+			ImGui::TextDisabled("%s", fixedRoomMap ? "고정 지도" : (_currentPhase.empty() ? "입력 지도" : _currentPhase.c_str()));
+			ImGui::EndGroup();
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);
+		ImGui::PopStyleVar(2);
+	}
+
+	void ExtendedGaussianViewer::onShowUserInstanceList(Window& win)
+	{
+		if (!_scene) {
+			return;
+		}
+
+		const UserUILayout layout = getUserUILayout(win);
+		const float scale = layout.scale;
+		const float maxPanelWidth = std::max(190.0f * layout.dpiScale, layout.winSize.x() * 0.32f);
+		const float panelWidth = clampFloat(260.0f * scale, 190.0f * layout.dpiScale, maxPanelWidth);
+		const float panelHeight = fitUserDimension(520.0f * scale, 280.0f * layout.dpiScale, layout.winSize.y() - 2.0f * layout.margin);
+		const ImVec2 panelPos(
+			std::max(layout.margin, layout.winSize.x() - panelWidth - layout.margin),
+			layout.margin);
+
+		ImGui::SetNextWindowPos(panelPos, ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(panelWidth, panelHeight), ImGuiCond_Always);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * scale);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f * scale, 10.0f * scale));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.00f, 1.00f, 1.00f, 0.92f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.73f, 0.78f, 0.86f, 0.72f));
+
+		const ImGuiWindowFlags flags =
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoSavedSettings;
+
+		if (ImGui::Begin("User Instance List", nullptr, flags)) {
+			ImGui::SetWindowFontScale(layout.resolutionScale);
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.56f, 0.79f, 0.98f, 0.95f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.62f, 0.84f, 0.99f, 1.00f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.49f, 0.73f, 0.95f, 1.00f));
+			ImGui::Button("즐겨찾기 목록", ImVec2(-1.0f, 0.0f));
+			ImGui::PopStyleColor(3);
+
+			std::vector<GaussianInstance*> instances;
+			std::unordered_set<std::string> existingNames;
+			for (const auto& pair : _scene->getInstances()) {
+				if (pair.second) {
+					instances.push_back(pair.second.get());
+					existingNames.insert(pair.first);
+				}
+			}
+
+			for (auto it = _userFavoriteInstances.begin(); it != _userFavoriteInstances.end();) {
+				if (existingNames.count(*it) == 0) {
+					it = _userFavoriteInstances.erase(it);
+				}
+				else {
+					++it;
+				}
+			}
+
+			std::sort(instances.begin(), instances.end(), [this](const GaussianInstance* lhs, const GaussianInstance* rhs) {
+				const bool lhsFavorite = _userFavoriteInstances.count(lhs->getName()) > 0;
+				const bool rhsFavorite = _userFavoriteInstances.count(rhs->getName()) > 0;
+				if (lhsFavorite != rhsFavorite) {
+					return lhsFavorite;
+				}
+				return lhs->getName() < rhs->getName();
+			});
+
+			const float listHeight = std::max(1.0f, ImGui::GetContentRegionAvail().y);
+			if (ImGui::BeginChild("UserInstanceListScroll", ImVec2(0.0f, listHeight), false)) {
+				if (instances.empty()) {
+					ImGui::TextDisabled("No instances");
+				}
+				for (GaussianInstance* instance : instances) {
+					if (!instance) {
+						continue;
+					}
+
+					const std::string& name = instance->getName();
+					const bool favorite = _userFavoriteInstances.count(name) > 0;
+					const bool selected = _selectedInstance == instance;
+					ImGui::PushID(name.c_str());
+					ImGui::PushStyleColor(ImGuiCol_Text, favorite ? ImVec4(0.96f, 0.62f, 0.04f, 1.0f) : ImVec4(0.39f, 0.45f, 0.55f, 1.0f));
+					if (ImGui::Button(favorite ? "★" : "☆", ImVec2(30.0f * scale, 0.0f))) {
+						if (favorite) {
+							_userFavoriteInstances.erase(name);
+						}
+						else {
+							_userFavoriteInstances.insert(name);
+						}
+					}
+					ImGui::PopStyleColor();
+					ImGui::SameLine();
+
+					if (selected) {
+						ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.86f, 0.95f, 1.0f, 1.0f));
+						ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.82f, 0.93f, 1.0f, 1.0f));
+						ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.76f, 0.89f, 1.0f, 1.0f));
+					}
+					if (ImGui::Selectable(name.c_str(), selected, 0, ImVec2(0.0f, 30.0f * scale))) {
+						_selectedInstance = instance;
+						focusCameraOnInstanceCenter(*instance);
+					}
+					if (selected) {
+						ImGui::PopStyleColor(3);
+					}
+					ImGui::PopID();
+				}
+			}
+			ImGui::EndChild();
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);
+		ImGui::PopStyleVar(2);
+	}
+
+	void ExtendedGaussianViewer::setUserCameraMoveVector(const Vector2f& moveVector)
+	{
+		const auto viewIt = _ibrSubViews.find("Gaussian View");
+		if (viewIt == _ibrSubViews.end()) {
+			return;
+		}
+
+		auto customHandler = std::dynamic_pointer_cast<CustomCameraHandler>(viewIt->second.handler);
+		if (customHandler) {
+			customHandler->setUiMoveVector(moveVector);
+		}
+	}
+
+	void ExtendedGaussianViewer::onShowUserNavigationControl(Window& win)
+	{
+		const UserUILayout layout = getUserUILayout(win);
+		const float scale = layout.scale;
+		const float panelSize = 178.0f * scale;
+		const ImVec2 panelPos(layout.margin, std::max(layout.margin, layout.winSize.y() - panelSize - layout.margin));
+
+		ImGui::SetNextWindowPos(panelPos, ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(panelSize, panelSize), ImGuiCond_Always);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, panelSize * 0.5f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06f, 0.09f, 0.16f, 0.82f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.06f, 0.65f, 0.91f, 0.95f));
+
+		const ImGuiWindowFlags flags =
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoScrollbar |
+			ImGuiWindowFlags_NoSavedSettings;
+
+		Vector2f moveVector(0.0f, 0.0f);
+		if (ImGui::Begin("User Navigation Control", nullptr, flags)) {
+			ImGui::SetWindowFontScale(layout.resolutionScale);
+			const ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+			const ImVec2 canvasSize(panelSize, panelSize);
+			ImGui::InvisibleButton("##UserNavigationDpad", canvasSize);
+			const bool active = ImGui::IsItemActive() && ImGui::IsMouseDown(0);
+			const ImVec2 mousePos = ImGui::GetIO().MousePos;
+			const ImVec2 center(canvasPos.x + panelSize * 0.5f, canvasPos.y + panelSize * 0.5f);
+			const float radius = panelSize * 0.42f;
+
+			if (active) {
+				const float dx = (mousePos.x - center.x) / radius;
+				const float dy = (mousePos.y - center.y) / radius;
+				moveVector.x() = std::max(-1.0f, std::min(1.0f, dx));
+				moveVector.y() = std::max(-1.0f, std::min(1.0f, -dy));
+				const float length = moveVector.norm();
+				if (length > 1.0f) {
+					moveVector /= length;
+				}
+				if (moveVector.norm() < 0.15f) {
+					moveVector = Vector2f(0.0f, 0.0f);
+				}
+			}
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddCircleFilled(center, radius, IM_COL32(15, 23, 42, 218), 64);
+			drawList->AddCircle(center, radius, IM_COL32(14, 165, 233, 255), 64, 2.0f * scale);
+
+			const float keyWidth = 38.0f * scale;
+			const float keyHeight = 34.0f * scale;
+			const float keyOffset = 43.0f * scale;
+			const float keyRounding = 3.0f * scale;
+			const ImU32 keyFill = IM_COL32(255, 255, 255, 235);
+			const ImU32 keyActiveFill = IM_COL32(219, 242, 255, 245);
+			const ImU32 keyBorder = IM_COL32(226, 232, 240, 245);
+			const ImU32 keyActiveBorder = IM_COL32(56, 189, 248, 255);
+			const ImU32 keyText = IM_COL32(15, 23, 42, 255);
+
+			auto drawKey = [&](const char* label, const ImVec2& keyCenter, bool keyActive) {
+				const ImVec2 a(keyCenter.x - keyWidth * 0.5f, keyCenter.y - keyHeight * 0.5f);
+				const ImVec2 b(keyCenter.x + keyWidth * 0.5f, keyCenter.y + keyHeight * 0.5f);
+				drawList->AddRectFilled(a, b, keyActive ? keyActiveFill : keyFill, keyRounding);
+				drawList->AddRect(a, b, keyActive ? keyActiveBorder : keyBorder, keyRounding, 0, keyActive ? 1.8f * scale : 1.0f * scale);
+				const ImVec2 textSize = ImGui::CalcTextSize(label);
+				drawList->AddText(ImVec2(keyCenter.x - textSize.x * 0.5f, keyCenter.y - textSize.y * 0.5f), keyText, label);
+			};
+
+			drawKey("W", ImVec2(center.x, center.y - keyOffset), moveVector.y() > 0.25f);
+			drawKey("D", ImVec2(center.x + keyOffset, center.y), moveVector.x() > 0.25f);
+			drawKey("S", ImVec2(center.x, center.y + keyOffset), moveVector.y() < -0.25f);
+			drawKey("A", ImVec2(center.x - keyOffset, center.y), moveVector.x() < -0.25f);
+
+			const float gap = 9.0f * scale;
+			drawList->AddQuadFilled(
+				ImVec2(center.x, center.y - gap),
+				ImVec2(center.x + gap, center.y),
+				ImVec2(center.x, center.y + gap),
+				ImVec2(center.x - gap, center.y),
+				IM_COL32(15, 23, 42, 235));
+		}
+		ImGui::End();
+		ImGui::PopStyleColor(2);
+		ImGui::PopStyleVar(2);
+
+		setUserCameraMoveVector(moveVector);
 	}
 
 	void ExtendedGaussianViewer::onShowScenePanel(Window& win) {
@@ -1413,6 +2253,9 @@ namespace sibr {
 		_showGUI = !_showGUI;
 		if (!_showGUI) {
 			SIBR_LOG << "[MultiViewManager] GUI is now hidden, use Ctrl+Alt+G to toggle it back on." << std::endl;
+		}
+		if (_uiMode == UIMode::User) {
+			return;
 		}
 		toggleSubViewsGUI();
 	}
